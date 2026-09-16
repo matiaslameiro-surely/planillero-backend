@@ -1,0 +1,24 @@
+# PostgreSQL de desarrollo para el backend.
+#
+# Los datos que viven acá son de trabajo y descartables; las credenciales son las de un entorno
+# local y no deben reutilizarse en ningún despliegue.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: planillero-postgres
+    environment:
+      POSTGRES_DB: planillero
+      POSTGRES_USER: planillero
+      POSTGRES_PASSWORD: planillero
+    ports:
+      - "5432:5432"
+    volumes:
+      - planillero-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U planillero -d planillero"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  planillero-pgdata:
