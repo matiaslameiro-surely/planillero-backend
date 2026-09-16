@@ -37,6 +37,11 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.BAD_REQUEST, code, message);
     }
 
+    /** 409: el recurso ya está en el estado que se quería alcanzar. */
+    public static ApiException conflict(String code, String message) {
+        return new ApiException(HttpStatus.CONFLICT, code, message);
+    }
+
     /** 429: demasiados intentos; se frena para no facilitar la fuerza bruta. */
     public static ApiException tooManyRequests(String code, String message) {
         return new ApiException(HttpStatus.TOO_MANY_REQUESTS, code, message);

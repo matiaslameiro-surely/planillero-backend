@@ -124,6 +124,10 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"code\":\"" + codigoVigente(secreto) + "\"}"))
                 .andExpect(status().isNoContent());
 
+        mockMvc.perform(post("/auth/2fa/setup").header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("two_factor_already_enabled"));
+
         MvcResult login = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
                         .content(credenciales("supervisor.demo", "Supervisor123!")))
                 .andExpect(status().isOk())
@@ -134,11 +138,29 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         String challengeId = JsonPath.read(login.getResponse().getContentAsString(), "$.challengeId");
 
         mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
-                        .content("{\"challengeId\":\"" + challengeId + "\",\"code\":\""
-                                + codigoVigente(secreto) + "\"}"))
+                        .content(desafio(challengeId, codigoVigente(secreto))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty());
+
+        // El desafío es de un solo uso: canjearlo de nuevo, incluso con el código correcto, ya no sirve.
+        mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
+                        .content(desafio(challengeId, codigoVigente(secreto))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("invalid_challenge"));
+
+        // Y el código no se puede adivinar: superado el umbral de intentos fallidos, se frena con 429.
+        for (int intento = 0; intento < 5; intento++) {
+            mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
+                            .content(desafio(challengeId, "000000")))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error").value("invalid_two_factor_code"));
+        }
+
+        mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
+                        .content(desafio(challengeId, "000000")))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error").value("too_many_attempts"));
     }
 
     private String accessToken(String username, String password) throws Exception {
@@ -159,6 +181,10 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     private static String credenciales(String username, String password) {
         return "{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}";
+    }
+
+    private static String desafio(String challengeId, String code) {
+        return "{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + code + "\"}";
     }
 
     private static String codigoVigente(String secret) throws Exception {

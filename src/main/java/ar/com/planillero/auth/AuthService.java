@@ -38,6 +38,7 @@ public class AuthService {
     private final RefreshTokenService refreshTokenService;
     private final TotpService totpService;
     private final LoginAttemptService loginAttemptService;
+    private final TwoFactorChallengeStore challengeStore;
 
     public AuthService(
             UserRepository userRepository,
@@ -45,13 +46,15 @@ public class AuthService {
             TokenService tokenService,
             RefreshTokenService refreshTokenService,
             TotpService totpService,
-            LoginAttemptService loginAttemptService) {
+            LoginAttemptService loginAttemptService,
+            TwoFactorChallengeStore challengeStore) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
         this.refreshTokenService = refreshTokenService;
         this.totpService = totpService;
         this.loginAttemptService = loginAttemptService;
+        this.challengeStore = challengeStore;
     }
 
     @Transactional
@@ -84,14 +87,33 @@ public class AuthService {
         return LoginResponse.authenticated(issueTokens(user));
     }
 
+    /**
+     * Completa el segundo factor del login.
+     *
+     * <p>El código se cuenta igual que la contraseña: superado el umbral de intentos fallidos el
+     * desafío queda frenado con 429, y un desafío ya canjeado no vuelve a servir.
+     */
     @Transactional
     public TokenResponse verifyTwoFactor(String challengeId, String code) {
-        String username = tokenService.readTwoFactorSubject(challengeId);
-        User user = requireUser(username);
+        TwoFactorChallenge challenge = tokenService.readTwoFactorChallenge(challengeId);
+        String username = challenge.username();
 
+        if (loginAttemptService.isBlocked(twoFactorKey(username))) {
+            throw ApiException.tooManyRequests(
+                    "too_many_attempts", "Demasiados intentos fallidos. Probá de nuevo más tarde.");
+        }
+
+        User user = requireUser(username);
         if (!user.isTwoFactorEnabled() || !totpService.verify(user.getTwoFactorSecret(), code)) {
+            loginAttemptService.registerFailure(twoFactorKey(username));
             throw ApiException.unauthorized("invalid_two_factor_code", "El código de verificación es incorrecto.");
         }
+
+        if (!challengeStore.tryConsume(challenge.id())) {
+            throw ApiException.unauthorized("invalid_challenge", "El desafío de segundo factor ya fue usado.");
+        }
+
+        loginAttemptService.reset(twoFactorKey(username));
         return issueTokens(user);
     }
 
@@ -118,6 +140,10 @@ public class AuthService {
     @Transactional
     public TwoFactorSetupResponse setupTwoFactor(String username) {
         User user = requireUser(username);
+        if (user.isTwoFactorEnabled()) {
+            throw ApiException.conflict("two_factor_already_enabled",
+                    "El segundo factor ya está habilitado. Deshabilitálo antes de generar un secreto nuevo.");
+        }
         String secret = totpService.generateSecret();
         user.setPendingTwoFactorSecret(secret);
         userRepository.save(user);
@@ -155,6 +181,11 @@ public class AuthService {
     private User requireUser(String username) {
         return userRepository.findByUsername(username)
                 .orElseThrow(() -> ApiException.unauthorized("invalid_credentials", "El usuario no existe."));
+    }
+
+    /** Clave propia del control de intentos del segundo factor, separada de la del login. */
+    private static String twoFactorKey(String username) {
+        return "2fa:" + username;
     }
 
     private static List<String> roleNames(User user) {

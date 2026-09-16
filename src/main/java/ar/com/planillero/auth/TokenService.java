@@ -2,6 +2,7 @@ package ar.com.planillero.auth;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.security.JwtProperties;
@@ -56,7 +57,12 @@ public class TokenService {
         return encode(claims);
     }
 
-    /** Token de desafío que prueba que la contraseña ya fue validada y falta el segundo factor. */
+    /**
+     * Token de desafío que prueba que la contraseña ya fue validada y falta el segundo factor.
+     *
+     * <p>Lleva un {@code jti} propio para que quien lo canjee pueda marcarlo como usado: el desafío
+     * se consume una sola vez.
+     */
     public String issueTwoFactorChallenge(User user) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -64,19 +70,20 @@ public class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.challengeTokenTtl()))
                 .subject(user.getUsername())
+                .id(UUID.randomUUID().toString())
                 .claim(PURPOSE_CLAIM, PURPOSE_TWO_FACTOR)
                 .build();
         return encode(claims);
     }
 
-    /** Devuelve el usuario del desafío; rechaza cualquier token que no sea un desafío válido. */
-    public String readTwoFactorSubject(String challengeToken) {
+    /** Lee el desafío; rechaza cualquier token que no sea un desafío válido. */
+    public TwoFactorChallenge readTwoFactorChallenge(String challengeToken) {
         try {
             Jwt jwt = decoder.decode(challengeToken);
-            if (!PURPOSE_TWO_FACTOR.equals(jwt.getClaimAsString(PURPOSE_CLAIM))) {
+            if (!PURPOSE_TWO_FACTOR.equals(jwt.getClaimAsString(PURPOSE_CLAIM)) || jwt.getId() == null) {
                 throw ApiException.unauthorized("invalid_challenge", "El desafío de segundo factor no es válido.");
             }
-            return jwt.getSubject();
+            return new TwoFactorChallenge(jwt.getSubject(), jwt.getId());
         } catch (JwtException ex) {
             throw ApiException.unauthorized("invalid_challenge", "El desafío de segundo factor no es válido.");
         }
