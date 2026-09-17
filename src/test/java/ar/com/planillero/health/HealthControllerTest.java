@@ -38,7 +38,9 @@ class HealthControllerTest {
                 .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.timestamp").isNotEmpty())
                 .andExpect(jsonPath("$.database.status").value("UP"))
-                .andExpect(jsonPath("$.database.latencyMs").value(8));
+                .andExpect(jsonPath("$.database.latencyMs").value(8))
+                .andExpect(jsonPath("$.estado").value("ok"))
+                .andExpect(jsonPath("$.momento").isNotEmpty());
     }
 
     @Test
@@ -50,7 +52,9 @@ class HealthControllerTest {
         mockMvc.perform(get("/salud"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.database.status").value("UP"));
+                .andExpect(jsonPath("$.database.status").value("UP"))
+                .andExpect(jsonPath("$.estado").value("ok"))
+                .andExpect(jsonPath("$.momento").isNotEmpty());
     }
 
     @Test
@@ -63,6 +67,8 @@ class HealthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DEGRADED"))
                 .andExpect(jsonPath("$.database.status").value("DOWN"))
-                .andExpect(jsonPath("$.database.latencyMs").value(12));
+                .andExpect(jsonPath("$.database.latencyMs").value(12))
+                .andExpect(jsonPath("$.estado").value("error"))
+                .andExpect(jsonPath("$.momento").isNotEmpty());
     }
 }

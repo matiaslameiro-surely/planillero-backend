@@ -29,7 +29,7 @@ public class HealthController {
     public HealthResponse getHealth() {
         DatabaseHealthResponse databaseHealth = databaseHealthService.checkHealth();
         String overallStatus = "UP".equals(databaseHealth.status()) ? "UP" : "DEGRADED";
-        return new HealthResponse(
+        return HealthResponse.of(
                 overallStatus,
                 Instant.now(),
                 databaseHealth
