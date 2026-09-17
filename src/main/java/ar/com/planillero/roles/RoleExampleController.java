@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
  * servir de molde a los endpoints reales, que van a repetir este estilo de {@code @PreAuthorize}.
  */
 @RestController
-@RequestMapping("/roles")
+@RequestMapping("/api/v1/roles")
 public class RoleExampleController {
 
     /** Accesible para cualquier rol autenticado. */

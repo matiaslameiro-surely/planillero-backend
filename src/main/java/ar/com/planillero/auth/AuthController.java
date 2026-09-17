@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Endpoints de autenticación y gestión del segundo factor. */
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/api/v1/auth")
 public class AuthController {
 
     private final AuthService authService;

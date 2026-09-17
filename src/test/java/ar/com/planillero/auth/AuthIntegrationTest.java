@@ -44,18 +44,18 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("POST /auth/login con credenciales inválidas responde 401 sin revelar el campo")
+    @DisplayName("POST /api/v1/auth/login con credenciales inválidas responde 401 sin revelar el campo")
     void loginInvalidoResponde401() throws Exception {
-        mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
                         .content(credenciales("operador.demo", "clave-incorrecta")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("invalid_credentials"));
     }
 
     @Test
-    @DisplayName("POST /auth/login con credenciales válidas devuelve access y refresh token")
+    @DisplayName("POST /api/v1/auth/login con credenciales válidas devuelve access y refresh token")
     void loginValidoDevuelveTokens() throws Exception {
-        mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
                         .content(credenciales("operador.demo", "Operador123!")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.twoFactorRequired").value(false))
@@ -64,9 +64,9 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET /auth/me sin token responde 401")
+    @DisplayName("GET /api/v1/auth/me sin token responde 401")
     void meSinTokenResponde401() throws Exception {
-        mockMvc.perform(get("/auth/me"))
+        mockMvc.perform(get("/api/v1/auth/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("unauthorized"));
     }
@@ -75,35 +75,35 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("un operario recibe 403 en el endpoint de administrador y un admin entra")
     void rbacPorRol() throws Exception {
         String tokenOperador = accessToken("operador.demo", "Operador123!");
-        mockMvc.perform(get("/roles/ejemplo-admin").header("Authorization", "Bearer " + tokenOperador))
+        mockMvc.perform(get("/api/v1/roles/ejemplo-admin").header("Authorization", "Bearer " + tokenOperador))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("forbidden"));
 
         String tokenAdmin = accessToken("admin.demo", "Admin123!");
-        mockMvc.perform(get("/roles/ejemplo-admin").header("Authorization", "Bearer " + tokenAdmin))
+        mockMvc.perform(get("/api/v1/roles/ejemplo-admin").header("Authorization", "Bearer " + tokenAdmin))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/roles/ejemplo-operador").header("Authorization", "Bearer " + tokenAdmin))
+        mockMvc.perform(get("/api/v1/roles/ejemplo-operador").header("Authorization", "Bearer " + tokenAdmin))
                 .andExpect(status().isOk());
     }
 
     @Test
-    @DisplayName("POST /auth/refresh rota el token: el viejo deja de servir")
+    @DisplayName("POST /api/v1/auth/refresh rota el token: el viejo deja de servir")
     void refreshRotaYRevocaElTokenAnterior() throws Exception {
         String refreshToken = refreshToken("operador.demo", "Operador123!");
 
         String nuevoRefresh = JsonPath.read(
-                mockMvc.perform(post("/auth/refresh").contentType(APPLICATION_JSON)
+                mockMvc.perform(post("/api/v1/auth/refresh").contentType(APPLICATION_JSON)
                                 .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
                         .andExpect(status().isOk())
                         .andReturn().getResponse().getContentAsString(),
                 "$.refreshToken");
 
-        mockMvc.perform(post("/auth/refresh").contentType(APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/auth/refresh").contentType(APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("invalid_refresh_token"));
 
-        mockMvc.perform(post("/auth/refresh").contentType(APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/auth/refresh").contentType(APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + nuevoRefresh + "\"}"))
                 .andExpect(status().isOk());
     }
@@ -114,21 +114,21 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         String token = accessToken("supervisor.demo", "Supervisor123!");
 
         String secreto = JsonPath.read(
-                mockMvc.perform(post("/auth/2fa/setup").header("Authorization", "Bearer " + token))
+                mockMvc.perform(post("/api/v1/auth/2fa/setup").header("Authorization", "Bearer " + token))
                         .andExpect(status().isOk())
                         .andReturn().getResponse().getContentAsString(),
                 "$.secret");
 
-        mockMvc.perform(post("/auth/2fa/enable").header("Authorization", "Bearer " + token)
+        mockMvc.perform(post("/api/v1/auth/2fa/enable").header("Authorization", "Bearer " + token)
                         .contentType(APPLICATION_JSON)
                         .content("{\"code\":\"" + codigoVigente(secreto) + "\"}"))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(post("/auth/2fa/setup").header("Authorization", "Bearer " + token))
+        mockMvc.perform(post("/api/v1/auth/2fa/setup").header("Authorization", "Bearer " + token))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("two_factor_already_enabled"));
 
-        MvcResult login = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
                         .content(credenciales("supervisor.demo", "Supervisor123!")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.twoFactorRequired").value(true))
@@ -137,34 +137,34 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
         String challengeId = JsonPath.read(login.getResponse().getContentAsString(), "$.challengeId");
 
-        mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/auth/verify-2fa").contentType(APPLICATION_JSON)
                         .content(desafio(challengeId, codigoVigente(secreto))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty());
 
         // El desafío es de un solo uso: canjearlo de nuevo, incluso con el código correcto, ya no sirve.
-        mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/auth/verify-2fa").contentType(APPLICATION_JSON)
                         .content(desafio(challengeId, codigoVigente(secreto))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("invalid_challenge"));
 
         // Y el código no se puede adivinar: superado el umbral de intentos fallidos, se frena con 429.
         for (int intento = 0; intento < 5; intento++) {
-            mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
+            mockMvc.perform(post("/api/v1/auth/verify-2fa").contentType(APPLICATION_JSON)
                             .content(desafio(challengeId, "000000")))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.error").value("invalid_two_factor_code"));
         }
 
-        mockMvc.perform(post("/auth/verify-2fa").contentType(APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/auth/verify-2fa").contentType(APPLICATION_JSON)
                         .content(desafio(challengeId, "000000")))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.error").value("too_many_attempts"));
     }
 
     private String accessToken(String username, String password) throws Exception {
-        String json = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
+        String json = mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
                         .content(credenciales(username, password)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
@@ -172,7 +172,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     private String refreshToken(String username, String password) throws Exception {
-        String json = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON)
+        String json = mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
                         .content(credenciales(username, password)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();

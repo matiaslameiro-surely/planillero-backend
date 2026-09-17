@@ -38,12 +38,13 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/health", "/salud").permitAll()
                         .requestMatchers(
-                                "/salud",
-                                "/auth/login",
-                                "/auth/verify-2fa",
-                                "/auth/refresh",
-                                "/auth/logout")
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/verify-2fa",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout",
+                                "/api/v1/auth/2fa/**")
                         .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
