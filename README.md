@@ -59,8 +59,9 @@ El backend expone la autenticación centralizada del ecosistema:
 - **PostgreSQL** vía JPA + **Flyway** (migraciones versionadas).
 - Esquema `core`: `users`, `roles`, `user_roles`, `refresh_tokens` (nombres en inglés por convención).
 - Esquema `forms`: `form_templates` (plantillas de formulario, con el JSON Schema en JSONB).
-- Esquema `visits`: `visits` (con `responses_json` en JSONB). Tabla mínima: el ciclo de vida
-  completo de la visita lo agregan las tareas de agenda y geolocalización.
+- Esquema `visits`: `visits`, creada por la planificación de rutas (`V7`). El formulario le suma
+  `form_template_id`, `responses_json` (JSONB) y `form_submitted_at` (`V9`), y los mapea en una
+  entidad propia (`VisitFormRecord`) para no acoplarse al ciclo de vida de la visita.
 - Las dos columnas JSONB tienen **índice GIN**, para poder consultar por contenido del JSON sin
   recorrer la tabla entera.
 - Seed de desarrollo: `operador.demo/Operador123!` (OPERATOR), `supervisor.demo/Supervisor123!` (SUPERVISOR), `admin.demo/Admin123!` (ADMINISTRATOR). **Son credenciales ficticias**, documentadas como tales.

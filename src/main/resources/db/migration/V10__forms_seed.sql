@@ -123,8 +123,3 @@ insert into forms.form_templates (id, template_key, version, name, description, 
     true
 );
 
--- Visitas de ejemplo, también ficticias: existen para poder probar el envío de formulario sin
--- depender del módulo de asignación de visitas, que todavía no está.
-insert into visits.visits (id, status, created_at) values
-    ('bbbbbbbb-0001-4000-8000-000000000001', 'PENDING', now()),
-    ('bbbbbbbb-0002-4000-8000-000000000002', 'PENDING', now());

@@ -25,13 +25,13 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class VisitFormService {
 
-    private final VisitRepository visitRepository;
+    private final VisitFormRecordRepository visitRepository;
     private final FormTemplateService templateService;
     private final FormSchemaValidator validator;
     private final ObjectMapper objectMapper;
 
     public VisitFormService(
-            VisitRepository visitRepository,
+            VisitFormRecordRepository visitRepository,
             FormTemplateService templateService,
             FormSchemaValidator validator,
             ObjectMapper objectMapper) {
@@ -50,7 +50,7 @@ public class VisitFormService {
      */
     @Transactional
     public FormSubmissionResponse submit(UUID visitId, FormSubmissionRequest request) {
-        Visit visit = visitRepository.findById(visitId)
+        VisitFormRecord visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> ApiException.notFound(
                         "visit_not_found", "No existe la visita indicada."));
 

@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.UUID;
 
 import org.hamcrest.Matchers;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,8 +27,9 @@ import com.jayway.jsonpath.JsonPath;
 /**
  * Pruebas del envío de formularios de punta a punta.
  *
- * <p>Usan las visitas y plantillas ficticias del seed {@code V6}. Cada test escribe sobre una visita
- * distinta para no depender del orden de ejecución.
+ * <p>Usan las plantillas ficticias del seed {@code V10}. Las visitas las crea cada test: la tabla es de
+ * PLAN-8 y su seed puede cambiar, así que estos tests no dependen de él. Cada test escribe sobre una
+ * visita distinta para no depender del orden de ejecución.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -41,6 +43,22 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    /** Visitas ficticias propias, con las columnas obligatorias de la tabla de PLAN-8. */
+    @BeforeEach
+    void crearVisitas() {
+        crearVisita(VISITA_VALIDA, "F-0001");
+        crearVisita(VISITA_INYECCION, "F-0002");
+    }
+
+    private void crearVisita(UUID id, String code) {
+        jdbcTemplate.update("""
+                insert into visits.visits
+                    (id, code, address, latitude, longitude, jurisdiction, status, urgency)
+                values (?, ?, 'Calle Ficticia 100', -34.600000, -58.400000, 'ZONA_NORTE', 'PENDING', 'LOW')
+                on conflict (id) do nothing
+                """, id, code);
+    }
 
     @Test
     @DisplayName("POST sin token responde 401")
@@ -84,6 +102,11 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
                 "{\"taskType\": \"CORRECTIVO\"}",
                 VISITA_VALIDA);
         assertThat(guardado).isTrue();
+
+        // El estado de la visita es del ciclo de vida de planificación: el formulario no lo toca.
+        String estado = jdbcTemplate.queryForObject(
+                "select status from visits.visits where id = ?", String.class, VISITA_VALIDA);
+        assertThat(estado).isEqualTo("PENDING");
     }
 
     @Test

@@ -12,11 +12,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * Visita a la que se le carga un formulario.
+ * El formulario cargado en una visita.
  *
- * <p>Deliberadamente mínima: identificador, estado, alta y el formulario. El ciclo de vida completo
- * —asignación, geolocalización, inicio y cierre— es de otras tareas; esta entidad existe para que
- * las respuestas tengan dónde colgarse.
+ * <p>Mapea <strong>sólo</strong> las columnas del formulario de {@code visits.visits}. La visita en sí
+ * —dirección, estado, urgencia, inicio— es de {@link ar.com.planillero.planning.Visit}, y esta
+ * entidad no la duplica ni la toca: nunca inserta filas y sólo escribe sus tres columnas. Así el
+ * formulario no queda acoplado al ciclo de vida de la visita, que evoluciona en otras tareas.
  *
  * <p>Las respuestas se guardan como el texto JSON que mandó el cliente y no como un grafo de
  * objetos: así se conserva exactamente lo enviado, que es lo que después firma y audita el resto del
@@ -25,16 +26,10 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "visits", schema = "visits")
-public class Visit {
+public class VisitFormRecord {
 
     @Id
     private UUID id;
-
-    @Column(name = "status", nullable = false, length = 30)
-    private String status = "PENDING";
-
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
 
     /** Versión exacta de plantilla contra la que se validaron las respuestas. */
     @Column(name = "form_template_id")
@@ -47,33 +42,12 @@ public class Visit {
     @Column(name = "form_submitted_at")
     private Instant formSubmittedAt;
 
-    protected Visit() {
+    protected VisitFormRecord() {
         // Requerido por JPA.
-    }
-
-    /**
-     * Crea una visita pendiente.
-     *
-     * <p>Hoy la usan los tests y el seed: el alta real de visitas llega con el módulo de
-     * asignación.
-     */
-    public static Visit create() {
-        Visit visit = new Visit();
-        visit.id = UUID.randomUUID();
-        visit.createdAt = Instant.now();
-        return visit;
     }
 
     public UUID getId() {
         return id;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
     }
 
     public UUID getFormTemplateId() {
@@ -92,12 +66,11 @@ public class Visit {
      * Registra el formulario ya validado.
      *
      * <p>Se guardan juntos el JSON y la plantilla que lo aceptó: uno sin el otro no se puede
-     * interpretar.
+     * interpretar. No cambia el estado de la visita: eso es del ciclo de vida de planificación.
      */
     public void submitForm(UUID formTemplateId, String responsesJson, Instant submittedAt) {
         this.formTemplateId = formTemplateId;
         this.responsesJson = responsesJson;
         this.formSubmittedAt = submittedAt;
-        this.status = "FORM_SUBMITTED";
     }
 }

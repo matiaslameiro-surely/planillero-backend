@@ -1,8 +1,7 @@
 -- Formularios tipificados: catálogo de plantillas con JSON Schema y respuestas en JSONB.
 --
--- Numerada V5 a propósito: la V4 la usa PLAN-10 (evidencias y manifiestos), que está en curso en
--- paralelo. Flyway acepta el hueco, y así no hay dos migraciones con la misma versión en ningún orden
--- de merge.
+-- Numerada V9 a propósito: se ejecuta después de V7 (PLAN-8), que crea `visits.visits`, y de V8
+-- (PLAN-9), que le agrega el inicio de visita. Flyway acepta los huecos de numeración.
 --
 -- La forma de cada formulario es un dato, no código: se guarda como JSON Schema en la columna
 -- `schema_json`. Agregar un campo a un formulario es publicar una versión nueva de la plantilla,
@@ -73,26 +72,21 @@ create trigger trg_form_templates_immutable
     for each row execute function forms.reject_form_template_mutation();
 
 -- ---------------------------------------------------------------------------------------------
--- Visitas
+-- Formulario de la visita
 -- ---------------------------------------------------------------------------------------------
 --
--- Tabla mínima, sólo lo indispensable para poder colgarle el formulario: identificador, estado y
--- fecha de alta. La geolocalización, los timestamps de inicio y el resto del ciclo de vida de la
--- visita los agrega PLAN-9 con su propia migración.
+-- La tabla `visits.visits` es de PLAN-8 (V7): acá sólo se le agregan las columnas del formulario.
+-- `add column if not exists` para que la migración sea segura aunque alguna otra tarea ya las haya
+-- creado con la misma forma.
 
-create table visits.visits (
-    id                uuid        primary key,
-    status            varchar(30) not null default 'PENDING',
-    created_at        timestamptz not null default now(),
-
+alter table visits.visits
     -- Qué versión exacta de qué plantilla validó estas respuestas. Sin esto, el JSON guardado no
     -- se puede interpretar más adelante.
-    form_template_id  uuid references forms.form_templates (id),
-    responses_json    jsonb,
-    form_submitted_at timestamptz
-);
+    add column if not exists form_template_id  uuid references forms.form_templates (id),
+    add column if not exists responses_json    jsonb,
+    add column if not exists form_submitted_at timestamptz;
 
 -- Índice GIN sobre las respuestas: es lo que permite buscar visitas por el valor de un campo del
 -- formulario (por ejemplo, las que reportaron cierto tipo de tarea) sin scan completo.
-create index idx_visits_responses_gin
+create index if not exists idx_visits_responses_gin
     on visits.visits using gin (responses_json jsonb_path_ops);
