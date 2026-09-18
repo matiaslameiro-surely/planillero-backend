@@ -42,11 +42,12 @@ public class FormTemplateService {
     /**
      * Resuelve la plantilla contra la que hay que validar un envío.
      *
-     * <p>Si el envío indica una versión, se usa esa —aunque ya no esté vigente, porque un
-     * formulario cargado hace una semana se tiene que poder enviar con las reglas que tenía—; si no,
-     * la última vigente.
+     * <p>Si el envío indica una versión, se usa esa; si no, la última vigente. En los dos casos la
+     * versión tiene que estar <strong>vigente</strong>: una plantilla dada de baja ya no acepta
+     * envíos nuevos.
      *
-     * @throws ApiException {@code 400 template_not_found} si la plantilla o la versión no existen
+     * @throws ApiException {@code 400 template_not_found} si la plantilla o la versión no existen;
+     *                      {@code 400 template_inactive} si la versión existe pero fue dada de baja
      */
     public FormTemplate resolveForSubmission(String templateKey, Integer version) {
         if (version == null) {
@@ -56,10 +57,20 @@ public class FormTemplateService {
                             "No hay ninguna plantilla vigente con la clave «" + templateKey + "»."));
         }
 
-        return repository.findByTemplateKeyAndVersion(templateKey, version)
+        FormTemplate template = repository.findByTemplateKeyAndVersion(templateKey, version)
                 .orElseThrow(() -> ApiException.badRequest(
                         "template_not_found",
                         "No existe la versión " + version + " de la plantilla «" + templateKey + "»."));
+
+        // Código propio y no template_not_found: el cliente tiene que poder distinguir "esa plantilla
+        // no existe" de "la versión que tenés guardada quedó vieja, descargá la vigente".
+        if (!template.isActive()) {
+            throw ApiException.badRequest(
+                    "template_inactive",
+                    "La versión " + version + " de la plantilla «" + templateKey
+                            + "» ya no está vigente. Descargá la versión actual y volvé a completar el formulario.");
+        }
+        return template;
     }
 
     private FormTemplate requireLatestActive(String templateKey) {

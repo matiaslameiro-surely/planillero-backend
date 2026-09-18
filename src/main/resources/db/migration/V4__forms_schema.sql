@@ -54,6 +54,7 @@ begin
        or new.template_key is distinct from old.template_key
        or new.version    is distinct from old.version
        or new.name       is distinct from old.name
+       or new.description is distinct from old.description
        or new.created_at is distinct from old.created_at then
         raise exception
             'La plantilla %/v% es inmutable: publicá una versión nueva en lugar de modificarla',

@@ -108,10 +108,10 @@ validadas contra reglas que ya no existen. La garantía está en la base, no en 
 código:
 
 - índice único `(template_key, version)`, y
-- un trigger `before update` que rechaza cambiarle el schema, la clave, la versión o el nombre.
+- un trigger `before update` que rechaza cambiarle cualquier campo salvo `active`.
 
 Dar de baja una plantilla (`active = false`) sí se permite: no cambia las reglas con las que se
-validó nada.
+validó nada. Una versión dada de baja deja de aceptar envíos nuevos (`400 template_inactive`).
 
 ### Claves JWT
 

@@ -184,6 +184,25 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("una versión de plantilla dada de baja no acepta envíos: 400 template_inactive")
+    void versionInactivaResponde400() throws Exception {
+        // mantenimiento-general v1 existe en el seed pero está inactiva. El payload cumple su
+        // schema: si se aceptara, el rechazo no podría venir de la validación de campos.
+        mockMvc.perform(post("/api/v1/visitas/{id}/formulario", VISITA_VALIDA)
+                        .header(HttpHeaders.AUTHORIZATION, bearerOperador())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "templateKey": "mantenimiento-general",
+                                  "templateVersion": 1,
+                                  "responses": { "workedHours": 8, "taskType": "PREVENTIVO" }
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("template_inactive"));
+    }
+
+    @Test
     @DisplayName("OWASP A03: un valor con SQL adentro se guarda como texto y no toca el esquema")
     void valorConSqlSeGuardaLiteral() throws Exception {
         String inyeccion = "'; drop table forms.form_templates; --";
@@ -220,6 +239,16 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
     void plantillaPublicadaNoSePuedeModificar() {
         assertThatThrownBy(() -> jdbcTemplate.update(
                 "update forms.form_templates set schema_json = '{}'::jsonb where template_key = ?",
+                "control-de-acceso"))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("inmutable");
+    }
+
+    @Test
+    @DisplayName("la descripción de una plantilla publicada tampoco se puede modificar")
+    void descripcionPublicadaNoSePuedeModificar() {
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update forms.form_templates set description = 'otra' where template_key = ?",
                 "control-de-acceso"))
                 .isInstanceOf(DataAccessException.class)
                 .hasMessageContaining("inmutable");
