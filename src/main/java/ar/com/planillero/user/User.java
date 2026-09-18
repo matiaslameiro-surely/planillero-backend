@@ -42,6 +42,10 @@ public class User {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** Zona en la que opera el usuario; base del control de acceso horizontal (OWASP A01). */
+    @Column(nullable = false)
+    private String jurisdiction;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -90,6 +94,14 @@ public class User {
 
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public String getJurisdiction() {
+        return jurisdiction;
+    }
+
+    public void setJurisdiction(String jurisdiction) {
+        this.jurisdiction = jurisdiction;
     }
 
     public Instant getCreatedAt() {
