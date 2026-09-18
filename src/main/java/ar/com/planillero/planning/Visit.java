@@ -1,6 +1,7 @@
 package ar.com.planillero.planning;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -50,6 +51,28 @@ public class Visit {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    // Evidencia del inicio de la visita. Es nula hasta que un operador la inicia.
+    @Column(name = "start_latitude")
+    private BigDecimal startLatitude;
+
+    @Column(name = "start_longitude")
+    private BigDecimal startLongitude;
+
+    @Column(name = "start_accuracy_meters")
+    private BigDecimal startAccuracyMeters;
+
+    @Column(name = "started_at_device")
+    private Instant startedAtDevice;
+
+    @Column(name = "started_at_server")
+    private Instant startedAtServer;
+
+    @Column(name = "drift_seconds")
+    private Long driftSeconds;
+
+    @Column(name = "started_by")
+    private UUID startedBy;
 
     protected Visit() {
         // Requerido por JPA.
@@ -106,5 +129,58 @@ public class Visit {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    /**
+     * Inicia la visita: deja asentada la presencia del operador y pasa a {@code IN_PROGRESS}.
+     *
+     * <p>Sólo se puede iniciar una visita {@code ASSIGNED}. Los valores se guardan con la misma escala
+     * que las columnas (6 decimales para coordenadas, 2 para la precisión), así lo que se devuelve al
+     * cliente es exactamente lo que quedó persistido.
+     *
+     * @throws IllegalStateException si la visita no está en estado {@code ASSIGNED}
+     */
+    public void start(BigDecimal latitude, BigDecimal longitude, BigDecimal accuracyMeters,
+            Instant startedAtDevice, Instant startedAtServer, long driftSeconds, UUID operatorId) {
+        if (status != VisitStatus.ASSIGNED) {
+            throw new IllegalStateException(
+                    "Sólo se puede iniciar una visita ASSIGNED y ésta está " + status + ".");
+        }
+        this.startLatitude = latitude.setScale(6, RoundingMode.HALF_UP);
+        this.startLongitude = longitude.setScale(6, RoundingMode.HALF_UP);
+        this.startAccuracyMeters = accuracyMeters.setScale(2, RoundingMode.HALF_UP);
+        this.startedAtDevice = startedAtDevice;
+        this.startedAtServer = startedAtServer;
+        this.driftSeconds = driftSeconds;
+        this.startedBy = operatorId;
+        this.status = VisitStatus.IN_PROGRESS;
+    }
+
+    public BigDecimal getStartLatitude() {
+        return startLatitude;
+    }
+
+    public BigDecimal getStartLongitude() {
+        return startLongitude;
+    }
+
+    public BigDecimal getStartAccuracyMeters() {
+        return startAccuracyMeters;
+    }
+
+    public Instant getStartedAtDevice() {
+        return startedAtDevice;
+    }
+
+    public Instant getStartedAtServer() {
+        return startedAtServer;
+    }
+
+    public Long getDriftSeconds() {
+        return driftSeconds;
+    }
+
+    public UUID getStartedBy() {
+        return startedBy;
     }
 }

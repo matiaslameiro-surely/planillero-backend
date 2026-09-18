@@ -53,6 +53,15 @@ public class PlanningController {
         return planningService.routeSheet(operatorId, date, authentication.getName());
     }
 
+    /** Hoja de ruta del operador autenticado para una fecha: la agenda que descarga la app móvil. */
+    @GetMapping("/operators/me/route-sheet")
+    @PreAuthorize("hasRole('OPERATOR')")
+    public RouteSheetDto mySheet(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            Authentication authentication) {
+        return planningService.mySheet(date, authentication.getName());
+    }
+
     /** Visitas de la jurisdicción del supervisor, con filtros opcionales. */
     @GetMapping("/visits")
     @PreAuthorize("hasRole('SUPERVISOR')")
