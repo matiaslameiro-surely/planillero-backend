@@ -33,27 +33,50 @@ En Windows usá `mvnw.cmd` en lugar de `./mvnw` si no estás en Git Bash.
 
 ```bash
 ./mvnw spring-boot:run
-curl http://localhost:8080/salud
-# {"estado":"ok","momento":"2026-09-16T12:00:00Z"}
+curl http://localhost:8080/health
+# {"status":"UP","timestamp":"...","database":{"status":"UP","latencyMs":5}}
 ```
+
+También responde en `/salud` por retrocompatibilidad con clientes existentes.
+
+## Configuración y Persistencia
+
+La aplicación utiliza PostgreSQL 16 gestionado mediante migraciones automáticas con Flyway y pool de conexiones HikariCP.
+
+Las credenciales de conexión se configuran mediante variables de entorno (OWASP A05):
+
+| Variable | Descripción | Valor por defecto |
+|---|---|---|
+| `SPRING_DATASOURCE_URL` | URL JDBC de conexión a PostgreSQL | `jdbc:postgresql://localhost:5432/planillero` |
+| `SPRING_DATASOURCE_USERNAME` | Usuario de base de datos | `planillero` |
+| `SPRING_DATASOURCE_PASSWORD` | Contraseña del usuario | `planillero` |
+
+### Esquemas lógicos y extensiones
+
+Flyway ejecuta al inicio las migraciones ubicadas en `src/main/resources/db/migration/`:
+- Habilita la extensión `pgcrypto` para identificadores UUID y hashing.
+- Crea los esquemas lógicos del sistema: `core`, `visits`, `forms`, `audit` (con alias secundarios `visitas`, `formularios`, `auditoria`).
 
 ## Estructura
 
 ```
 src/main/java/ar/com/planillero/
-├── PlanilleroBackendApplication.java   # punto de entrada
-└── salud/
-    └── SaludController.java            # GET /salud
+├── PlanilleroBackendApplication.java       # punto de entrada
+└── health/
+    ├── HealthController.java               # GET /health y GET /salud
+    ├── HealthResponse.java                 # DTO de respuesta consolidada
+    ├── DatabaseHealthService.java          # sondeo y medición de latencia de BD
+    └── DatabaseHealthResponse.java         # DTO con métricas de base de datos
 ```
 
-El paquete raíz es `ar.com.planillero`: nombrado por producto, no por empresa.
+El paquete raíz es `ar.com.planillero`: nombrado por producto, no por empresa. Todo el código (clases, métodos, variables) se escribe en inglés; los comentarios explicativos y documentación en español.
 
-### Por qué `/salud` y no Actuator
+### Por qué `/health` propio y no Actuator
 
 El endpoint de salud es propio en lugar de Spring Boot Actuator. Actuator trae varios endpoints
-expuestos y decisiones de seguridad que este proyecto todavía no tomó; un controller de cinco líneas
-cumple lo mismo sin comprometer nada a futuro. Si más adelante hace falta métricas o readiness/liveness
-para un orquestador, ahí sí conviene incorporarlo.
+expuestos y decisiones de seguridad que este proyecto todavía no tomó; un servicio liviano inyectado
+en el controller cumple con la visibilidad del estado del sistema (Heurística 1 de UX) y mide la latencia real
+hacia PostgreSQL sin comprometer nada a futuro.
 
 ## Cómo se trabaja en este repo
 
