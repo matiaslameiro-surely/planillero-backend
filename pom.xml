@@ -92,6 +92,17 @@
 			<version>1.7.1</version>
 		</dependency>
 
+		<!--
+			Validación de formularios dinámicos contra JSON Schema 2020-12.
+			La línea 3.x es la que compila contra Jackson 3 (tools.jackson), que es el que trae
+			Spring Boot 4; la 1.5.x sigue atada a Jackson 2 y arrastraría una segunda copia.
+		-->
+		<dependency>
+			<groupId>com.networknt</groupId>
+			<artifactId>json-schema-validator</artifactId>
+			<version>3.0.7</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
