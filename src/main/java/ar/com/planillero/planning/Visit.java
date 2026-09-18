@@ -96,6 +96,10 @@ public class Visit {
         return status;
     }
 
+    public void setStatus(VisitStatus status) {
+        this.status = status;
+    }
+
     public VisitUrgency getUrgency() {
         return urgency;
     }

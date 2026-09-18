@@ -13,6 +13,8 @@ public interface RouteSheetRepository extends JpaRepository<RouteSheet, UUID> {
 
     List<RouteSheet> findByOperatorId(UUID operatorId);
 
+    List<RouteSheet> findByOperatorIdAndRouteDate(UUID operatorId, LocalDate routeDate);
+
     List<RouteSheet> findByRouteDate(LocalDate routeDate);
 
     List<RouteSheet> findByVisitIdInAndRouteDate(List<UUID> visitIds, LocalDate routeDate);

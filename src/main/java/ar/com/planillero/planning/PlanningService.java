@@ -113,6 +113,9 @@ public class PlanningService {
                         "La visita " + visit.getCode() + " no se puede asignar (estado "
                                 + visit.getStatus().name().toLowerCase() + ").");
             }
+            // El estado ASSIGNED refleja que la visita tiene al menos una hoja de ruta. Queda
+            // persistido para que el filtro por estado del contrato sea consistente con la grilla.
+            visit.setStatus(VisitStatus.ASSIGNED);
         }
 
         // Reasignación: pelar las hojas previas del día para estas visitas. El flush evita chocar
@@ -150,9 +153,16 @@ public class PlanningService {
     }
 
     private List<Visit> restrictToRouteSheets(List<Visit> visits, LocalDate date, UUID operatorId) {
-        List<RouteSheet> sheets = date != null
-                ? routeSheetRepository.findByRouteDate(date)
-                : routeSheetRepository.findByOperatorId(operatorId);
+        // La combinación de filtros respeta cada dimensión: con operador y fecha, sólo las hojas de
+        // ese operador ese día (no las de cualquier operador de la zona con actividad ese día).
+        List<RouteSheet> sheets;
+        if (date != null && operatorId != null) {
+            sheets = routeSheetRepository.findByOperatorIdAndRouteDate(operatorId, date);
+        } else if (date != null) {
+            sheets = routeSheetRepository.findByRouteDate(date);
+        } else {
+            sheets = routeSheetRepository.findByOperatorId(operatorId);
+        }
         Set<UUID> sheetVisitIds = sheets.stream()
                 .map(s -> s.getVisit().getId())
                 .collect(Collectors.toSet());

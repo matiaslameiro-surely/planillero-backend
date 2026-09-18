@@ -227,6 +227,11 @@ class PlanningIntegrationTest extends AbstractIntegrationTest {
                         .contentType(APPLICATION_JSON)
                         .content(pedidoAsignacion(OPERADOR_DEMO, DIA_FILTROS, VISITA_NORTE_MEDIA)))
                 .andExpect(status().isOk());
+        // Segundo operador con una hoja el MISMO día: el filtro operatorId+date no puede mezclarlos.
+        mockMvc.perform(post("/api/v1/visits/assign").header("Authorization", "Bearer " + token)
+                        .contentType(APPLICATION_JSON)
+                        .content(pedidoAsignacion(OPERADOR_NORTE2, DIA_FILTROS, VISITA_NORTE_HIGH)))
+                .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/visits").header("Authorization", "Bearer " + token)
                         .param("operatorId", OPERADOR_DEMO.toString())
@@ -234,6 +239,20 @@ class PlanningIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].code").value("V-1002"));
+
+        mockMvc.perform(get("/api/v1/visits").header("Authorization", "Bearer " + token)
+                        .param("operatorId", OPERADOR_NORTE2.toString())
+                        .param("date", DIA_FILTROS.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].code").value("V-1001"));
+
+        // El estado ASSIGNED queda persistido: las dos visitas asignadas ese día (sin mezclar, las
+        // de fechas de otros tests no cuentan porque se acota con el filtro date).
+        mockMvc.perform(get("/api/v1/visits").header("Authorization", "Bearer " + token)
+                        .param("status", "ASSIGNED").param("date", DIA_FILTROS.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)));
     }
 
     private String supervisorToken() throws Exception {
