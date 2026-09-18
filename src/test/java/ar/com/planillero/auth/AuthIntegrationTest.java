@@ -36,8 +36,11 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("GET /salud es público")
-    void saludEsPublica() throws Exception {
+    @DisplayName("GET /health y GET /salud son públicos (sin token)")
+    void healthEsPublico() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("ok"));
         mockMvc.perform(get("/salud"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.estado").value("ok"));
