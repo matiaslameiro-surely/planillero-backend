@@ -34,4 +34,27 @@ public class ApiExceptionHandler {
                 "error", "invalid_request",
                 "message", detalle));
     }
+
+    @ExceptionHandler(ar.com.planillero.evidence.service.IntegrityMismatchException.class)
+    public ResponseEntity<Map<String, String>> handleIntegrityMismatch(
+            ar.com.planillero.evidence.service.IntegrityMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", "integrity_mismatch",
+                "message", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ar.com.planillero.evidence.storage.WormPolicyViolationException.class)
+    public ResponseEntity<Map<String, String>> handleWormViolation(
+            ar.com.planillero.evidence.storage.WormPolicyViolationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", "worm_policy_violation",
+                "message", ex.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", "bad_request",
+                "message", ex.getMessage()));
+    }
 }
