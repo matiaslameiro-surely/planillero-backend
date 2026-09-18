@@ -127,6 +127,18 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- Cada clase de test corre en su propio fork de JVM. Sin esto, el caché de
+					     contextos de Spring puede reutilizar entre clases el datasource de un
+					     contenedor de Testcontainers que ya quedó apagado al terminar la clase
+					     que lo creó (semántica de @Container), y toda la clase falla con
+					     Connection refused. El fork también levanta los contenedores de a uno. -->
+					<reuseForks>false</reuseForks>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 
