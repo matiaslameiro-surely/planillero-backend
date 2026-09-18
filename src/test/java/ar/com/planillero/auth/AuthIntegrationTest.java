@@ -72,6 +72,23 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("los endpoints de 2FA y /me exigen autenticación: 401 sin token")
+    void endpointsSensiblesRequierenAutenticacion() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/2fa/setup"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unauthorized"));
+        mockMvc.perform(post("/api/v1/auth/2fa/enable"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unauthorized"));
+        mockMvc.perform(post("/api/v1/auth/2fa/disable"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unauthorized"));
+        mockMvc.perform(get("/api/v1/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unauthorized"));
+    }
+
+    @Test
     @DisplayName("un operario recibe 403 en el endpoint de administrador y un admin entra")
     void rbacPorRol() throws Exception {
         String tokenOperador = accessToken("operador.demo", "Operador123!");

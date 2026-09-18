@@ -8,12 +8,12 @@
 --   supervisor.demo / Supervisor123!  (rol SUPERVISOR)
 --   admin.demo      / Admin123!       (rol ADMINISTRATOR)
 
-insert into roles (name) values
+insert into core.roles (name) values
     ('OPERATOR'),
     ('SUPERVISOR'),
     ('ADMINISTRATOR');
 
-insert into users (id, username, password_hash, two_factor_enabled, enabled, created_at) values
+insert into core.users (id, username, password_hash, two_factor_enabled, enabled, created_at) values
     ('11111111-1111-4111-8111-111111111111', 'operador.demo',
      '$2a$12$cN6/yxSkIISqlYD798skYuUJDoPhu5zJlCjzYDex66HTwIB6IF/MG', false, true, now()),
     ('22222222-2222-4222-8222-222222222222', 'supervisor.demo',
@@ -21,9 +21,9 @@ insert into users (id, username, password_hash, two_factor_enabled, enabled, cre
     ('33333333-3333-4333-8333-333333333333', 'admin.demo',
      '$2a$12$qOf92rIMypzXJpKEnGeW..jmUt8oE85mQres5ohhAb9x99IWB2mH2', false, true, now());
 
-insert into user_roles (user_id, role_id)
-select '11111111-1111-4111-8111-111111111111', id from roles where name = 'OPERATOR';
-insert into user_roles (user_id, role_id)
-select '22222222-2222-4222-8222-222222222222', id from roles where name = 'SUPERVISOR';
-insert into user_roles (user_id, role_id)
-select '33333333-3333-4333-8333-333333333333', id from roles where name = 'ADMINISTRATOR';
+insert into core.user_roles (user_id, role_id)
+select '11111111-1111-4111-8111-111111111111', id from core.roles where name = 'OPERATOR';
+insert into core.user_roles (user_id, role_id)
+select '22222222-2222-4222-8222-222222222222', id from core.roles where name = 'SUPERVISOR';
+insert into core.user_roles (user_id, role_id)
+select '33333333-3333-4333-8333-333333333333', id from core.roles where name = 'ADMINISTRATOR';

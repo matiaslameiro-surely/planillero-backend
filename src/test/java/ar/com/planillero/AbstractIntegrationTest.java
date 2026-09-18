@@ -1,28 +1,23 @@
 package ar.com.planillero;
 
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Base de las pruebas de integración.
+ * Clase base para pruebas de integracion que requieren infraestructura de persistencia.
  *
- * <p>Levanta un PostgreSQL real con Testcontainers en lugar de usar H2, para que el comportamiento
- * de la base sea el mismo que en producción. El contenedor es estático: se inicia una vez por JVM y
- * lo comparten todas las clases que heredan.
+ * <p>Inicializa un contenedor Docker de PostgreSQL 16 reutilizable y configura automaticamente las
+ * propiedades de conexion mediante {@link ServiceConnection}.
  */
+@SpringBootTest
+@Testcontainers
 public abstract class AbstractIntegrationTest {
 
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
-
-    static {
-        POSTGRES.start();
-    }
-
-    @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-    }
+    @Container
+    @ServiceConnection
+    protected static final PostgreSQLContainer<?> postgres =
+            new PostgreSQLContainer<>("postgres:16-alpine");
 }

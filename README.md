@@ -37,14 +37,14 @@ El backend expone la autenticación centralizada del ecosistema:
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/auth/login` | Login con usuario/contraseña. Devuelve access + refresh token, o `twoFactorRequired` + `challengeId` si el usuario tiene 2FA habilitado. |
-| `POST` | `/auth/verify-2fa` | Completa el segundo factor con `challengeId` y código TOTP de 6 dígitos → tokens. |
-| `POST` | `/auth/refresh` | Rota el refresh token (el anterior queda invalidado) y emite par nuevo. |
-| `POST` | `/auth/logout` | Revoca el refresh token. Idempotente. |
-| `POST` | `/auth/2fa/setup` | Emite secreto TOTP y URI `otpauth` para habilitar 2FA (Bearer). `409` si ya está habilitado. |
-| `POST` | `/auth/2fa/enable` | Confirma el código y habilita 2FA (Bearer). |
-| `POST` | `/auth/2fa/disable` | Deshabilita 2FA con código (Bearer). Idempotente si ya estaba apagado. |
-| `GET` | `/auth/me` | Usuario, roles y estado de 2FA (Bearer). |
+| `POST` | `/api/v1/auth/login` | Login con usuario/contraseña. Devuelve access + refresh token, o `twoFactorRequired` + `challengeId` si el usuario tiene 2FA habilitado. |
+| `POST` | `/api/v1/auth/verify-2fa` | Completa el segundo factor con `challengeId` y código TOTP de 6 dígitos → tokens. |
+| `POST` | `/api/v1/auth/refresh` | Rota el refresh token (el anterior queda invalidado) y emite par nuevo. |
+| `POST` | `/api/v1/auth/logout` | Revoca el refresh token. Idempotente. |
+| `POST` | `/api/v1/auth/2fa/setup` | Emite secreto TOTP y URI `otpauth` para habilitar 2FA (Bearer). `409` si ya está habilitado. |
+| `POST` | `/api/v1/auth/2fa/enable` | Confirma el código y habilita 2FA (Bearer). |
+| `POST` | `/api/v1/auth/2fa/disable` | Deshabilita 2FA con código (Bearer). Idempotente si ya estaba apagado. |
+| `GET` | `/api/v1/auth/me` | Usuario, roles y estado de 2FA (Bearer). |
 
 ### Características
 
@@ -68,26 +68,46 @@ El backend expone la autenticación centralizada del ecosistema:
 
 ```bash
 ./mvnw spring-boot:run
-curl http://localhost:8080/salud
-# {"estado":"ok","momento":"2026-09-16T12:00:00Z"}
+curl http://localhost:8080/health
+# {"status":"UP","timestamp":"...","database":{"status":"UP","latencyMs":5}}
 
 # Login sin 2FA (operador.demo)
-curl -X POST http://localhost:8080/auth/login \
+curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"operador.demo","password":"Operador123!"}'
 # {"twoFactorRequired":false,"accessToken":"<jwt>","refreshToken":"<opaco>"}
 
 # Login con 2FA (supervisor.demo tras habilitarlo)
-curl -X POST http://localhost:8080/auth/login \
+curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"supervisor.demo","password":"Supervisor123!"}'
 # {"twoFactorRequired":true,"challengeId":"<jwt-breve>"}
 # Luego:
-curl -X POST http://localhost:8080/auth/verify-2fa \
+curl -X POST http://localhost:8080/api/v1/auth/verify-2fa \
   -H "Content-Type: application/json" \
   -d '{"challengeId":"<el-que-devolvio-login>","code":"123456"}'
 # {"accessToken":"<jwt>","refreshToken":"<opaco>"}
 ```
+
+También responde en `/salud` por retrocompatibilidad con clientes existentes.
+
+## Configuración y Persistencia
+
+La aplicación utiliza PostgreSQL 16 gestionado mediante migraciones automáticas con Flyway y pool de conexiones HikariCP.
+
+Las credenciales de conexión se configuran mediante variables de entorno (OWASP A05):
+
+| Variable | Descripción | Valor por defecto |
+|---|---|---|
+| `SPRING_DATASOURCE_URL` | URL JDBC de conexión a PostgreSQL | `jdbc:postgresql://localhost:5432/planillero` |
+| `SPRING_DATASOURCE_USERNAME` | Usuario de base de datos | `planillero` |
+| `SPRING_DATASOURCE_PASSWORD` | Contraseña del usuario | `planillero` |
+
+### Esquemas lógicos y extensiones
+
+Flyway ejecuta al inicio las migraciones ubicadas en `src/main/resources/db/migration/`:
+- Habilita la extensión `pgcrypto` para identificadores UUID y hashing.
+- Crea los esquemas lógicos del sistema: `core`, `visits`, `forms`, `audit` (con alias secundarios `visitas`, `formularios`, `auditoria`).
 
 ## Estructura
 
@@ -95,7 +115,7 @@ curl -X POST http://localhost:8080/auth/verify-2fa \
 src/main/java/ar/com/planillero/
 ├── PlanilleroBackendApplication.java   # punto de entrada
 ├── auth/                               # autenticación y 2FA
-│   ├── AuthController.java             # endpoints /auth/*
+│   ├── AuthController.java             # endpoints /api/v1/auth/*
 │   ├── AuthService.java                # lógica: login, 2FA, refresh, logout
 │   ├── TokenService.java               # emisión/validación JWT (access, challenge 2FA)
 │   ├── TotpService.java                # TOTP RFC 6238
@@ -107,6 +127,11 @@ src/main/java/ar/com/planillero/
 ├── common/
 │   ├── ApiException.java               # errores de negocio con código HTTP
 │   └── ApiExceptionHandler.java        # JSON consistente {error, message}
+├── health/
+│   ├── HealthController.java           # GET /health y GET /salud
+│   ├── HealthResponse.java             # DTO de respuesta consolidada
+│   ├── DatabaseHealthService.java      # sondeo y medición de latencia de BD
+│   └── DatabaseHealthResponse.java     # DTO con métricas de base de datos
 ├── roles/
 │   ├── RoleExampleController.java      # endpoints de ejemplo por rol
 │   └── ...
@@ -117,23 +142,21 @@ src/main/java/ar/com/planillero/
 │   ├── AuthProperties.java             # maxAttempts, attemptWindow
 │   ├── RestAuthenticationEntryPoint.java
 │   └── RestAccessDeniedHandler.java
-├── user/
-│   ├── User.java                       # entidad JPA
-│   ├── UserRepository.java
-│   ├── Role.java / RoleName.java
-│   └── RoleRepository.java
-└── salud/
-    └── SaludController.java            # GET /salud (público)
+└── user/
+    ├── User.java                       # entidad JPA
+    ├── UserRepository.java
+    ├── Role.java / RoleName.java
+    └── RoleRepository.java
 ```
 
-El paquete raíz es `ar.com.planillero`: nombrado por producto, no por empresa.
+El paquete raíz es `ar.com.planillero`: nombrado por producto, no por empresa. Todo el código (clases, métodos, variables) se escribe en inglés; los comentarios explicativos y documentación en español.
 
-### Por qué `/salud` y no Actuator
+### Por qué `/health` propio y no Actuator
 
 El endpoint de salud es propio en lugar de Spring Boot Actuator. Actuator trae varios endpoints
-expuestos y decisiones de seguridad que este proyecto todavía no tomó; un controller de cinco líneas
-cumple lo mismo sin comprometer nada a futuro. Si más adelante hace falta métricas o readiness/liveness
-para un orquestador, ahí sí conviene incorporarlo.
+expuestos y decisiones de seguridad que este proyecto todavía no tomó; un servicio liviano inyectado
+en el controller cumple con la visibilidad del estado del sistema (Heurística 1 de UX) y mide la latencia real
+hacia PostgreSQL sin comprometer nada a futuro.
 
 ## Cómo se trabaja en este repo
 
