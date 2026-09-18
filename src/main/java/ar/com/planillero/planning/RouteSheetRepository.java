@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 /** Acceso a las hojas de ruta persistidas. */
 public interface RouteSheetRepository extends JpaRepository<RouteSheet, UUID> {
 
+    /** Si la visita figura en alguna hoja de ruta del operador, de cualquier fecha. */
+    boolean existsByOperatorIdAndVisitId(UUID operatorId, UUID visitId);
+
     List<RouteSheet> findByOperatorIdAndRouteDateOrderByPositionAsc(UUID operatorId, LocalDate routeDate);
 
     List<RouteSheet> findByOperatorId(UUID operatorId);

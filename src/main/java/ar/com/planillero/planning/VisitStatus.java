@@ -8,6 +8,8 @@ public enum VisitStatus {
 
     /** Tiene al menos una hoja de ruta asignada. */
     ASSIGNED,
+    /** El operador la inició en el domicilio y quedó registrada su presencia. */
+    IN_PROGRESS,
 
     /** Ya fue atendida por un operador. */
     COMPLETED,

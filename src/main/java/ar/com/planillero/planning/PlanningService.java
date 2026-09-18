@@ -69,6 +69,17 @@ public class PlanningService {
         return toRouteSheetDto(operator, date, sheets);
     }
 
+    /**
+     * Hoja de ruta del propio operador para una fecha, ordenada por posición.
+     *
+     * <p>Es la agenda que baja la app móvil. Reusa {@link #routeSheet}: el operador siempre pide su
+     * propio identificador, así que nunca puede leer la hoja de otro.
+     */
+    @Transactional(readOnly = true)
+    public RouteSheetDto mySheet(LocalDate date, String username) {
+        return routeSheet(currentUser(username).getId(), date, username);
+    }
+
     /** Visitas de la jurisdicción del supervisor, con filtros opcionales. */
     @Transactional(readOnly = true)
     public List<VisitDto> listVisits(VisitStatus status, VisitUrgency urgency, LocalDate date,
@@ -108,7 +119,11 @@ public class PlanningService {
         }
         for (Visit visit : visits) {
             requireSameJurisdiction(caller.getJurisdiction(), visit.getJurisdiction());
-            if (visit.getStatus() == VisitStatus.COMPLETED || visit.getStatus() == VisitStatus.CANCELLED) {
+            // Una visita ya iniciada (IN_PROGRESS) tampoco se reasigna: volvería a ASSIGNED y se podría
+            // iniciar de nuevo, pisando la evidencia del primer inicio.
+            if (visit.getStatus() == VisitStatus.IN_PROGRESS
+                    || visit.getStatus() == VisitStatus.COMPLETED
+                    || visit.getStatus() == VisitStatus.CANCELLED) {
                 throw ApiException.badRequest("visit_not_assignable",
                         "La visita " + visit.getCode() + " no se puede asignar (estado "
                                 + visit.getStatus().name().toLowerCase() + ").");
