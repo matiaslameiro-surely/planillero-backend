@@ -26,7 +26,7 @@ import com.jayway.jsonpath.JsonPath;
 /**
  * Pruebas del envío de formularios de punta a punta.
  *
- * <p>Usan las visitas y plantillas ficticias del seed {@code V5}. Cada test escribe sobre una visita
+ * <p>Usan las visitas y plantillas ficticias del seed {@code V6}. Cada test escribe sobre una visita
  * distinta para no depender del orden de ejecución.
  */
 @SpringBootTest

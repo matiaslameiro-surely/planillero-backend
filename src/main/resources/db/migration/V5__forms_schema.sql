@@ -1,5 +1,9 @@
 -- Formularios tipificados: catálogo de plantillas con JSON Schema y respuestas en JSONB.
 --
+-- Numerada V5 a propósito: la V4 la usa PLAN-10 (evidencias y manifiestos), que está en curso en
+-- paralelo. Flyway acepta el hueco, y así no hay dos migraciones con la misma versión en ningún orden
+-- de merge.
+--
 -- La forma de cada formulario es un dato, no código: se guarda como JSON Schema en la columna
 -- `schema_json`. Agregar un campo a un formulario es publicar una versión nueva de la plantilla,
 -- no recompilar el backend.

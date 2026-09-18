@@ -21,7 +21,7 @@ import com.jayway.jsonpath.JsonPath;
 /**
  * Pruebas del catálogo de plantillas contra la aplicación completa.
  *
- * <p>Corren con la cadena de seguridad real y con las plantillas de seed de {@code V5}, así que
+ * <p>Corren con la cadena de seguridad real y con las plantillas de seed de {@code V6}, así que
  * validan también que el JSONB de la base vuelva al cliente como JSON y no como texto escapado.
  */
 @SpringBootTest
