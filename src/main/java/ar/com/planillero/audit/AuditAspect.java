@@ -10,32 +10,32 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
-
-import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Intercepta los métodos marcados con {@link AuditLog} y registra el evento sólo si la operación
  * terminó bien: una mutación que lanzó una excepción no llegó a pasar, así que no hay nada que
  * auditar (y el intento fallido queda igual en los logs de aplicación, que es lo que cubre
  * {@link #onFailure}).
+ *
+ * <p>Sirve para mutaciones donde una invocación afecta a **una** entidad. Cuando una invocación
+ * afecta a varias (por ejemplo, {@code PlanningService.assign} sobre un conjunto de visitas), esa
+ * mutación no usa esta anotación: llama a {@link AuditChainService#append} directamente, una vez
+ * por entidad, con {@link AuditRequestContext}.
  */
 @Aspect
 @Component
 public class AuditAspect {
 
     private static final Logger log = LoggerFactory.getLogger(AuditAspect.class);
-    private static final String DEVICE_HEADER = "X-Device-Id";
 
     private final AuditChainService chainService;
+    private final AuditRequestContext requestContext;
 
-    public AuditAspect(AuditChainService chainService) {
+    public AuditAspect(AuditChainService chainService, AuditRequestContext requestContext) {
         this.chainService = chainService;
+        this.requestContext = requestContext;
     }
 
     @Around("@annotation(auditLog)")
@@ -49,11 +49,9 @@ public class AuditAspect {
         payload.put("result", result);
 
         String entityId = entityId(args, auditLog.entityIdParam());
-        String username = currentUsername();
-        String ip = currentIp();
-        String deviceId = currentDeviceId();
-
-        chainService.append(auditLog.eventType(), auditLog.entityType(), entityId, username, ip, deviceId, payload);
+        chainService.append(auditLog.eventType(), auditLog.entityType(), entityId,
+                requestContext.currentUsername(), requestContext.currentIp(), requestContext.currentDeviceId(),
+                payload);
 
         return result;
     }
@@ -90,28 +88,5 @@ public class AuditAspect {
             return null;
         }
         return args[entityIdParam].toString();
-    }
-
-    private String currentUsername() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null ? authentication.getName() : "system";
-    }
-
-    private String currentIp() {
-        HttpServletRequest request = currentRequest();
-        return request != null ? request.getRemoteAddr() : null;
-    }
-
-    private String currentDeviceId() {
-        HttpServletRequest request = currentRequest();
-        return request != null ? request.getHeader(DEVICE_HEADER) : null;
-    }
-
-    /** {@code null} fuera de una request HTTP (por ejemplo, un test que llama al service directo). */
-    private HttpServletRequest currentRequest() {
-        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs)) {
-            return null;
-        }
-        return attrs.getRequest();
     }
 }

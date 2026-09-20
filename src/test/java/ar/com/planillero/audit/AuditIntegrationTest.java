@@ -68,6 +68,30 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void assigningAVisitAuditsTheVisitNotTheOperator() throws Exception {
+        UUID visit = newVisit();
+        assign(OPERADOR_DEMO, LocalDate.of(2026, 11, 14), visit);
+
+        Integer rows = jdbc.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'VISIT_ASSIGNED' "
+                        + "and entity_type = 'VISIT'",
+                Integer.class, visit.toString());
+        assertThat(rows).isEqualTo(1);
+
+        // Nunca quedó auditado bajo el id del operador: si "Auditar Integridad de Visita" filtrara por
+        // esa clave en lugar de la visita, este evento sería invisible para esa consulta.
+        Integer rowsUnderOperator = jdbc.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'VISIT_ASSIGNED'",
+                Integer.class, OPERADOR_DEMO.toString());
+        assertThat(rowsUnderOperator).isEqualTo(0);
+
+        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", visit.toString())
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+    }
+
+    @Test
     void secondEventChainsAgainstTheFirstOnesHash() throws Exception {
         UUID visitA = newVisit();
         UUID visitB = newVisit();

@@ -5,11 +5,13 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import ar.com.planillero.audit.AuditLog;
+import ar.com.planillero.audit.AuditChainService;
+import ar.com.planillero.audit.AuditRequestContext;
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.planning.dto.OperatorDto;
 import ar.com.planillero.planning.dto.RouteSheetDto;
@@ -40,12 +42,17 @@ public class PlanningService {
     private final UserRepository userRepository;
     private final VisitRepository visitRepository;
     private final RouteSheetRepository routeSheetRepository;
+    private final AuditChainService auditChainService;
+    private final AuditRequestContext auditRequestContext;
 
     public PlanningService(UserRepository userRepository, VisitRepository visitRepository,
-            RouteSheetRepository routeSheetRepository) {
+            RouteSheetRepository routeSheetRepository, AuditChainService auditChainService,
+            AuditRequestContext auditRequestContext) {
         this.userRepository = userRepository;
         this.visitRepository = visitRepository;
         this.routeSheetRepository = routeSheetRepository;
+        this.auditChainService = auditChainService;
+        this.auditRequestContext = auditRequestContext;
     }
 
     /** Operadores de la jurisdicción del supervisor, para los selectores de la grilla. */
@@ -109,7 +116,6 @@ public class PlanningService {
      * no-op y responde 400.
      */
     @Transactional
-    @AuditLog(eventType = "VISIT_ASSIGNED", entityType = "ROUTE_ASSIGNMENT")
     public RouteSheetDto assign(UUID operatorId, LocalDate date, Set<UUID> visitIds, String username) {
         User caller = currentUser(username);
         User operator = requireOperator(operatorId);
@@ -158,10 +164,21 @@ public class PlanningService {
                 .max()
                 .orElse(0);
 
+        // Auditoría por visita, no por operador: es lo que permite después recorrer o verificar
+        // la cadena "de una visita puntual" (ver AuditController.verify). Por eso esta mutación no
+        // usa @AuditLog (que audita una sola entidad por invocación): audita una fila por cada
+        // visita afectada, con el mismo usuario/IP/dispositivo de la request.
+        String auditUsername = auditRequestContext.currentUsername();
+        String auditIp = auditRequestContext.currentIp();
+        String auditDeviceId = auditRequestContext.currentDeviceId();
+
         List<Visit> ordered = new ArrayList<>(visits);
         ordered.sort(MAS_URGENTE_PRIMERO);
         for (Visit visit : ordered) {
             routeSheetRepository.save(new RouteSheet(operatorId, date, visit, ++position, caller.getId()));
+            auditChainService.append("VISIT_ASSIGNED", "VISIT", visit.getId().toString(), auditUsername, auditIp,
+                    auditDeviceId,
+                    Map.of("visitCode", visit.getCode(), "operatorId", operatorId.toString(), "date", date.toString()));
         }
 
         List<RouteSheet> result = routeSheetRepository
