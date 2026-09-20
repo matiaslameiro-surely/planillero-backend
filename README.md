@@ -57,8 +57,62 @@ El backend expone la autenticación centralizada del ecosistema:
 ### Base de datos
 
 - **PostgreSQL** vía JPA + **Flyway** (migraciones versionadas).
-- Esquema: `users`, `roles`, `user_roles`, `refresh_tokens` (nombres en inglés por convención).
+- Esquema `core`: `users`, `roles`, `user_roles`, `refresh_tokens` (nombres en inglés por convención).
+- Esquema `forms`: `form_templates` (plantillas de formulario, con el JSON Schema en JSONB).
+- Esquema `visits`: `visits`, creada por la planificación de rutas (`V7`). El formulario le suma
+  `form_template_id`, `responses_json` (JSONB) y `form_submitted_at` (`V9`), y los mapea en una
+  entidad propia (`VisitFormRecord`) para no acoplarse al ciclo de vida de la visita.
+- Las dos columnas JSONB tienen **índice GIN**, para poder consultar por contenido del JSON sin
+  recorrer la tabla entera.
 - Seed de desarrollo: `operador.demo/Operador123!` (OPERATOR), `supervisor.demo/Supervisor123!` (SUPERVISOR), `admin.demo/Admin123!` (ADMINISTRATOR). **Son credenciales ficticias**, documentadas como tales.
+
+## Formularios tipificados
+
+La forma de cada formulario es **un dato, no código**: se publica como **JSON Schema 2020-12** en
+una plantilla versionada y las respuestas se guardan en columnas **JSONB**. Agregar un campo es
+publicar una versión nueva de la plantilla, no recompilar el backend.
+
+### Endpoints
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/v1/plantillas` | Plantillas vigentes, cada una con su JSON Schema completo (Bearer). |
+| `GET` | `/api/v1/plantillas/{clave}` | Última versión vigente de una plantilla. `404 template_not_found` si no existe. |
+| `POST` | `/api/v1/visitas/{id}/formulario` | Valida las respuestas contra el schema y, si cumplen, las guarda. |
+
+### Validación
+
+- Motor: `FormSchemaValidator`, sobre `com.networknt:json-schema-validator`. Dialecto **fijo**
+  2020-12 para todas las plantillas: la misma regla se comporta igual en todos los formularios.
+- **Devuelve todas las violaciones**, no la primera. El `400` trae `violations[]`, con la ruta del
+  campo en JSON Pointer (`/workedHours`), la palabra clave incumplida (`maximum`, `required`,
+  `enum`…) y un mensaje en español.
+- Los schemas compilados quedan cacheados: las plantillas son pocas e inmutables.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/visitas/<uuid>/formulario \
+  -H "Authorization: Bearer <jwt>" -H "Content-Type: application/json" \
+  -d '{"templateKey":"mantenimiento-general",
+       "responses":{"workedHours":7.5,"taskType":"CORRECTIVO","observations":"Sin novedades"}}'
+# 200 {"visitId":"...","templateKey":"mantenimiento-general","templateVersion":2,"submittedAt":"..."}
+
+# Con un campo fuera de rango y otro fuera del enum:
+# 400 {"error":"form_validation_failed","message":"El formulario tiene 2 campos con problemas.",
+#      "violations":[{"field":"/taskType","rule":"enum","message":"El valor debe ser uno de: ..."},
+#                    {"field":"/workedHours","rule":"maximum","message":"El valor debe ser menor o igual que 24."}]}
+```
+
+### Plantillas inmutables (OWASP A03)
+
+Una plantilla publicada **no se edita**: si se pudiera, las respuestas ya guardadas quedarían
+validadas contra reglas que ya no existen. La garantía está en la base, no en la disciplina del
+código:
+
+- índice único `(template_key, version)`, y
+- un trigger `before update` que rechaza cambiarle cualquier campo salvo `active`.
+
+Dar de baja una plantilla (`active = false`) sí se permite: no cambia las reglas con las que se
+validó nada. Una versión dada de baja deja de aceptar envíos nuevos (`400 template_inactive`).
 
 ### Claves JWT
 
