@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import ar.com.planillero.audit.AuditLog;
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.planning.dto.OperatorDto;
 import ar.com.planillero.planning.dto.RouteSheetDto;
@@ -108,6 +109,7 @@ public class PlanningService {
      * no-op y responde 400.
      */
     @Transactional
+    @AuditLog(eventType = "VISIT_ASSIGNED", entityType = "ROUTE_ASSIGNMENT")
     public RouteSheetDto assign(UUID operatorId, LocalDate date, Set<UUID> visitIds, String username) {
         User caller = currentUser(username);
         User operator = requireOperator(operatorId);

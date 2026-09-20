@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import ar.com.planillero.audit.AuditLog;
 import ar.com.planillero.evidence.dto.EvidenceResponse;
 import ar.com.planillero.evidence.model.Evidence;
 import ar.com.planillero.evidence.model.EvidenceType;
@@ -42,6 +43,7 @@ public class EvidenceService {
      * Ingesta un archivo de evidencia pericial mediante streaming, calculando el digest SHA-256 concurrente.
      */
     @Transactional
+    @AuditLog(eventType = "EVIDENCE_SAVED", entityType = "VISIT")
     public EvidenceResponse saveEvidence(
             UUID visitId,
             MultipartFile file,
