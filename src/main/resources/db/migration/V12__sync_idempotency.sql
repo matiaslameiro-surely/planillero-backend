@@ -1,4 +1,4 @@
--- Migración V11: sincronización por lote con garantía de idempotencia.
+-- Migración V12: sincronización por lote con garantía de idempotencia.
 --
 -- Nombres de tablas y columnas en inglés por convención del proyecto.
 --
