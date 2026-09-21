@@ -3,6 +3,7 @@ package ar.com.planillero.visits;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -37,6 +38,8 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
 
     private static final UUID VISITA_VALIDA = UUID.fromString("bbbbbbbb-0001-4000-8000-000000000001");
     private static final UUID VISITA_INYECCION = UUID.fromString("bbbbbbbb-0002-4000-8000-000000000002");
+    private static final UUID VISITA_GET_CON_FORM = UUID.fromString("bbbbbbbb-0003-4000-8000-000000000003");
+    private static final UUID VISITA_GET_SIN_FORM = UUID.fromString("bbbbbbbb-0004-4000-8000-000000000004");
 
     @Autowired
     private MockMvc mockMvc;
@@ -49,6 +52,8 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
     void crearVisitas() {
         crearVisita(VISITA_VALIDA, "F-0001");
         crearVisita(VISITA_INYECCION, "F-0002");
+        crearVisita(VISITA_GET_CON_FORM, "F-0003");
+        crearVisita(VISITA_GET_SIN_FORM, "F-0004");
     }
 
     private void crearVisita(UUID id, String code) {
@@ -295,6 +300,87 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
                 "control-de-acceso");
 
         assertThat(filas).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("GET sin token responde 401")
+    void getSinTokenResponde401() throws Exception {
+        mockMvc.perform(get("/api/v1/visitas/{id}/formulario", VISITA_VALIDA))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET con rol OPERATOR responde 403: el expediente es de supervisor/admin")
+    void getConOperadorResponde403() throws Exception {
+        mockMvc.perform(get("/api/v1/visitas/{id}/formulario", VISITA_VALIDA)
+                        .header(HttpHeaders.AUTHORIZATION, bearerOperador()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("GET devuelve la visita con su formulario guardado")
+    void getDevuelveFormularioGuardado() throws Exception {
+        mockMvc.perform(post("/api/v1/visitas/{id}/formulario", VISITA_GET_CON_FORM)
+                        .header(HttpHeaders.AUTHORIZATION, bearerOperador())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "templateKey": "mantenimiento-general",
+                                  "responses": {
+                                    "workedHours": 7.5,
+                                    "taskType": "CORRECTIVO",
+                                    "observations": "Se reemplazó el rodamiento.",
+                                    "serialNumber": "XYZ-0042",
+                                    "requiresFollowUp": true
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/visitas/{id}/formulario", VISITA_GET_CON_FORM)
+                        .header(HttpHeaders.AUTHORIZATION, bearerSupervisor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("F-0003"))
+                .andExpect(jsonPath("$.address").value("Calle Ficticia 100"))
+                .andExpect(jsonPath("$.jurisdiction").value("ZONA_NORTE"))
+                .andExpect(jsonPath("$.templateKey").value("mantenimiento-general"))
+                .andExpect(jsonPath("$.templateVersion").value(2))
+                .andExpect(jsonPath("$.responses.taskType").value("CORRECTIVO"))
+                .andExpect(jsonPath("$.responses.workedHours").value(7.5))
+                .andExpect(jsonPath("$.submittedAt").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("GET de una visita sin formulario devuelve la visita con datos de formulario nulos")
+    void getSinFormularioDevuelveNulos() throws Exception {
+        mockMvc.perform(get("/api/v1/visitas/{id}/formulario", VISITA_GET_SIN_FORM)
+                        .header(HttpHeaders.AUTHORIZATION, bearerSupervisor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("F-0004"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.formTemplateId").value(Matchers.nullValue()))
+                .andExpect(jsonPath("$.templateKey").value(Matchers.nullValue()))
+                .andExpect(jsonPath("$.responses").value(Matchers.nullValue()))
+                .andExpect(jsonPath("$.submittedAt").value(Matchers.nullValue()));
+    }
+
+    @Test
+    @DisplayName("GET de una visita sin formulario guardado pero con plantilla responde 404 si no existe")
+    void getVisitaInexistenteResponde404() throws Exception {
+        mockMvc.perform(get("/api/v1/visitas/{id}/formulario", UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, bearerSupervisor()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    private String bearerSupervisor() throws Exception {
+        String json = mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
+                        .content("""
+                                {"username": "supervisor.demo", "password": "Supervisor123!"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return "Bearer " + JsonPath.read(json, "$.accessToken");
     }
 
     private String bearerOperador() throws Exception {
