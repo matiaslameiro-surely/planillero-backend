@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import ar.com.planillero.audit.AuditLog;
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.forms.FormSchemaValidator;
 import ar.com.planillero.forms.FormTemplate;
@@ -49,6 +50,7 @@ public class VisitFormService {
      * @throws ar.com.planillero.forms.FormValidationException si el payload no cumple el schema
      */
     @Transactional
+    @AuditLog(eventType = "FORM_SUBMITTED", entityType = "VISIT")
     public FormSubmissionResponse submit(UUID visitId, FormSubmissionRequest request) {
         VisitFormRecord visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> ApiException.notFound(

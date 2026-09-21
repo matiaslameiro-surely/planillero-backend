@@ -15,6 +15,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
+import ar.com.planillero.audit.AuditLog;
 import ar.com.planillero.evidence.crypto.CryptoService;
 import ar.com.planillero.evidence.dto.CreateManifestRequest;
 import ar.com.planillero.evidence.dto.ManifestResponse;
@@ -55,6 +56,7 @@ public class ManifestService {
      * Genera el manifiesto canónico normalizado, computa la firma HMAC-SHA256 y lo persiste.
      */
     @Transactional
+    @AuditLog(eventType = "MANIFEST_SIGNED", entityType = "VISIT")
     public ManifestResponse createAndSignManifest(UUID visitId, UUID userId, CreateManifestRequest request) {
         if (visitId == null) {
             throw new IllegalArgumentException("El identificador de visita es obligatorio");
