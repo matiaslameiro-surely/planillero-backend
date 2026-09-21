@@ -3,6 +3,7 @@ package ar.com.planillero.audit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.AfterThrowing;
 import org.aspectj.lang.annotation.Around;
@@ -10,6 +11,8 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,10 +26,21 @@ import org.springframework.web.multipart.MultipartFile;
  * afecta a varias (por ejemplo, {@code PlanningService.assign} sobre un conjunto de visitas), esa
  * mutación no usa esta anotación: llama a {@link AuditChainService#append} directamente, una vez
  * por entidad, con {@link AuditRequestContext}.
+ *
+ * <p><b>Orden.</b> Este aspecto tiene que quedar <i>dentro</i> de la transacción de la mutación, así
+ * la fila de auditoría se confirma o se revierte junto con ella: si la mutación se revierte, no
+ * queda registrado un evento de algo que no ocurrió. Como {@code @Transactional} usa por defecto
+ * {@code LOWEST_PRECEDENCE}, un empate con este aspecto dejaría el orden librado a Spring; por eso
+ * {@link AuditTransactionConfig} adelanta la transacción un lugar y el aspecto se queda en
+ * {@link #ORDER}.
  */
 @Aspect
 @Component
+@Order(AuditAspect.ORDER)
 public class AuditAspect {
+
+    /** Precedencia del aspecto: la más baja, o sea la más interna de todas las que envuelven la mutación. */
+    public static final int ORDER = Ordered.LOWEST_PRECEDENCE;
 
     private static final Logger log = LoggerFactory.getLogger(AuditAspect.class);
 
@@ -58,7 +72,7 @@ public class AuditAspect {
 
     /** No bloquea ni enmascara la excepción real: sólo deja rastro en el log de aplicación. */
     @AfterThrowing(pointcut = "@annotation(auditLog)", throwing = "ex")
-    public void onFailure(ProceedingJoinPoint joinPoint, AuditLog auditLog, Throwable ex) {
+    public void onFailure(JoinPoint joinPoint, AuditLog auditLog, Throwable ex) {
         log.warn("Operación auditable '{}' falló y no se registró en audit_logs: {}",
                 auditLog.eventType(), ex.getMessage());
     }
