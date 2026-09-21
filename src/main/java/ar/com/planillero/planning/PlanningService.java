@@ -231,7 +231,8 @@ public class PlanningService {
 
     private VisitDto toVisitDto(Visit visit) {
         return new VisitDto(visit.getId(), visit.getCode(), visit.getAddress(), visit.getLatitude(),
-                visit.getLongitude(), visit.getStatus(), visit.getUrgency());
+                visit.getLongitude(), visit.getStatus(), visit.getUrgency(),
+                visit.isSyncedDeferred(), visit.getSyncedAt());
     }
 
     private RouteSheetDto toRouteSheetDto(User operator, LocalDate date, List<RouteSheet> sheets) {

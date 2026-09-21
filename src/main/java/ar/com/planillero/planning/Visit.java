@@ -74,6 +74,15 @@ public class Visit {
     @Column(name = "started_by")
     private UUID startedBy;
 
+    // Origen del formulario de la visita. Las escribe la sincronización diferida
+    // (ar.com.planillero.visits.VisitFormRecord); acá sólo se leen, para que el tablero del
+    // supervisor pueda distinguir lo que llegó en línea de lo que llegó de una cola offline.
+    @Column(name = "synced_deferred", nullable = false)
+    private boolean syncedDeferred;
+
+    @Column(name = "synced_at")
+    private Instant syncedAt;
+
     protected Visit() {
         // Requerido por JPA.
     }
@@ -182,5 +191,14 @@ public class Visit {
 
     public UUID getStartedBy() {
         return startedBy;
+    }
+
+    /** El formulario de esta visita llegó por sincronización diferida y no por la carga en línea. */
+    public boolean isSyncedDeferred() {
+        return syncedDeferred;
+    }
+
+    public Instant getSyncedAt() {
+        return syncedAt;
     }
 }
