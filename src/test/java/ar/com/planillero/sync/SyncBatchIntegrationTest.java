@@ -77,9 +77,15 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("con una clave que no es UUID v4 responde 400")
     void claveInvalidaResponde400() throws Exception {
-        // UUID válido pero de versión 1: sintácticamente correcto y aun así inaceptable, porque su
-        // unicidad depende del reloj y la MAC, no del azar.
-        for (String clave : new String[] {"lote-de-hoy", "1", "00000000-0000-1000-8000-000000000001"}) {
+        // Los dos últimos son UUID sintácticamente correctos y aun así inaceptables: el de versión 1
+        // basa su unicidad en el reloj y la MAC, y el de variante 0 no lo generó ningún generador
+        // aleatorio. Una clave previsible puede colisionar con la de otro dispositivo, y esa
+        // colisión no se vería como un error sino como un reintento.
+        for (String clave : new String[] {
+                "lote-de-hoy",
+                "1",
+                "00000000-0000-1000-8000-000000000001",
+                "00000000-0000-4000-0000-000000000000"}) {
             mockMvc.perform(post(BATCH)
                             .header(HttpHeaders.AUTHORIZATION, bearerOperador())
                             .header(SyncController.IDEMPOTENCY_KEY_HEADER, clave)
@@ -205,6 +211,30 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
 
         // La buena quedó guardada pese a que dos de sus compañeras de lote fallaron.
         assertThat(formulariosGuardados()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("una operación con un identificador que no es UUID v4 se rechaza sola")
+    void operacionConIdentificadorInvalidoSeRechazaSola() throws Exception {
+        UUID buena = UUID.randomUUID();
+        // Versión 1: no lo generó un generador aleatorio, así que otro dispositivo podría producir
+        // el mismo y una de las dos actas se perdería como "ya aplicada".
+        UUID noAleatoria = UUID.fromString("00000000-0000-1000-8000-000000000009");
+
+        String cuerpo = """
+                {"operations": [%s, %s]}
+                """.formatted(operacion(buena, visita), operacion(noAleatoria, visita));
+
+        mockMvc.perform(enviar(UUID.randomUUID(), cuerpo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results[0].status").value("APPLIED"))
+                .andExpect(jsonPath("$.results[1].status").value("FAILED"))
+                .andExpect(jsonPath("$.results[1].error").value("operation_id_invalid"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from visits.visits where sync_operation_id = ?",
+                Integer.class, noAleatoria))
+                .isZero();
     }
 
     @Test

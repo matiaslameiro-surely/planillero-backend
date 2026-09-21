@@ -74,10 +74,23 @@ public class SyncController {
                     "El header Idempotency-Key tiene que ser un UUID versión 4.");
         }
 
-        if (key.version() != 4) {
+        if (!esUuidV4(key)) {
             throw ApiException.badRequest("idempotency_key_invalid",
                     "El header Idempotency-Key tiene que ser un UUID versión 4.");
         }
         return key;
+    }
+
+    /**
+     * Un UUID versión 4 de verdad: versión 4 <em>y</em> variante RFC 4122.
+     *
+     * <p>La variante no es un detalle de formato. {@code 00000000-0000-4000-0000-000000000000} tiene
+     * versión 4 para Java y no lo generó ningún generador aleatorio: es el tipo de valor que aparece
+     * cuando alguien arma la clave a mano, y una clave previsible puede colisionar con la de otro
+     * dispositivo. Una colisión no se vería como un error sino como un reintento, y le devolvería a
+     * un operador la respuesta del lote de otro.
+     */
+    static boolean esUuidV4(UUID value) {
+        return value.version() == 4 && value.variant() == 2;
     }
 }

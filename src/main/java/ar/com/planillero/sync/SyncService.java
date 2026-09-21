@@ -73,18 +73,21 @@ public class SyncService {
             return objectMapper.readValue(cached.responseJson(), SyncBatchResponse.class);
         }
 
-        SyncBatchResponse response;
         try {
-            response = new SyncBatchResponse(request.operations().stream().map(this::apply).toList());
+            SyncBatchResponse response =
+                    new SyncBatchResponse(request.operations().stream().map(this::apply).toList());
+            idempotency.complete(idempotencyKey, objectMapper.writeValueAsString(response));
+            return response;
         } catch (RuntimeException unexpected) {
             // La clave queda libre: si no, el cliente recibiría 409 para siempre y no podría
-            // reintentar nunca un lote que nunca se aplicó.
+            // reintentar nunca. El cierre entra en el intento porque también puede fallar, y una
+            // clave reservada sin respuesta guardada es exactamente el estado que traba la cola.
+            //
+            // Esto cubre el fallo que se puede atrapar. Si el proceso muere, no hay catch que valga:
+            // de eso se encarga el vencimiento de la reserva en IdempotencyService.
             idempotency.release(idempotencyKey);
             throw unexpected;
         }
-
-        idempotency.complete(idempotencyKey, objectMapper.writeValueAsString(response));
-        return response;
     }
 
     /**
@@ -96,6 +99,14 @@ public class SyncService {
      */
     private SyncOperationResult apply(SyncOperationRequest operation) {
         UUID operationId = operation.clientOperationId();
+
+        // El identificador de operación se exige tan aleatorio como la clave de lote, y por el mismo
+        // motivo: si dos dispositivos pudieran generar el mismo, uno vería la operación del otro
+        // como ya aplicada y su acta nunca se guardaría. Se rechaza sólo esta operación, no el lote.
+        if (!SyncController.esUuidV4(operationId)) {
+            return SyncOperationResult.failed(operationId, "operation_id_invalid",
+                    "El clientOperationId tiene que ser un UUID versión 4.");
+        }
 
         // Camino rápido del reintento: la operación ya se aplicó en un envío anterior.
         SyncOperationResult alreadyApplied = resolveIfAlreadyApplied(operationId);

@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +32,14 @@ import ar.com.planillero.common.ApiException;
  */
 @Service
 public class IdempotencyService {
+
+    /**
+     * Cuánto vale una reserva antes de que otro envío pueda retomarla.
+     *
+     * <p>Es lo que impide que una caída del servidor entre la reserva y el cierre deje una clave
+     * trabada para siempre, con el dispositivo recibiendo {@code 409} en cada reintento.
+     */
+    private static final Duration LEASE = Duration.ofMinutes(2);
 
     private final IdempotencyKeyRepository repository;
     private final TransactionTemplate transactions;
@@ -110,6 +120,11 @@ public class IdempotencyService {
                 "idempotency_key_in_progress",
                 "Hay otro envío en curso con esta clave. Reintentá en unos segundos."));
 
+        if (stored.getStatus() == IdempotencyKeyStatus.IN_PROGRESS && estaAbandonada(stored)
+                && retomar(key, userId, requestHash)) {
+            return new Reservation.Reserved();
+        }
+
         // El mismo mensaje para "es de otro usuario" y para "el cuerpo es distinto", a propósito: un
         // cliente no tiene por qué poder distinguir si una clave existe en la cuenta de otro.
         if (!stored.getUserId().equals(userId) || !stored.getRequestHash().equals(requestHash)) {
@@ -123,6 +138,32 @@ public class IdempotencyService {
         }
 
         return new Reservation.AlreadyCompleted(stored.getResponseJson());
+    }
+
+    /**
+     * Una reserva sin cerrar tan vieja que ya no puede haber nadie procesándola.
+     *
+     * <p>El margen es amplio a propósito: un lote de cien formularios contra una base cargada tarda
+     * segundos, no minutos. Si fuera corto, dos envíos legítimos podrían solaparse y procesarse los
+     * dos; si no existiera, una caída del proceso trabaría esa clave para siempre.
+     */
+    private boolean estaAbandonada(IdempotencyKey stored) {
+        return stored.getCreatedAt().isBefore(clock.instant().minus(LEASE));
+    }
+
+    /**
+     * Intenta quedarse con una reserva abandonada.
+     *
+     * <p>Retomarla es seguro gracias a la <strong>otra</strong> garantía: lo que el envío original
+     * hubiera alcanzado a aplicar tiene su identificador de operación guardado, así que vuelve como
+     * duplicado en vez de escribirse de nuevo. La clave de lote evita reprocesar; la de operación
+     * evita duplicar. Recuperarse de una caída se apoya en la segunda.
+     */
+    private boolean retomar(UUID key, UUID userId, String requestHash) {
+        Instant now = clock.instant();
+        Integer tomadas = transactions.execute(status ->
+                repository.takeOverAbandoned(key, userId, requestHash, now, now.minus(LEASE)));
+        return tomadas != null && tomadas == 1;
     }
 
     /**
