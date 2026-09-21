@@ -1,2 +1,6 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+
+# Los scripts de shell deben tener LF: con CRLF no arrancan en Linux.
+*.sh text eol=lf
+Dockerfile text eol=lf

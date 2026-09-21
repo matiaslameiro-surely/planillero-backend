@@ -29,6 +29,51 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)   # macOS
 
 En Windows usá `mvnw.cmd` en lugar de `./mvnw` si no estás en Git Bash.
 
+## Entorno con Docker
+
+El `docker-compose.yml` levanta el ecosistema completo: **PostgreSQL 16**, **MinIO**, este backend y el
+**backoffice** (Angular servido por NGINX). Requiere Docker con Compose v2 y los repos `backend/`,
+`backoffice/` y `frontend/` clonados como carpetas hermanas (el build del backoffice usa `../backoffice`).
+
+```bash
+cp .env.example .env          # una sola vez; ajustá los valores si querés
+docker compose up --build     # levanta todo y espera a que cada servicio esté healthy
+```
+
+| Servicio | URL en el host | Notas |
+|---|---|---|
+| Backoffice | http://localhost:8081 | NGINX; proxya `/api/`, `/salud` y `/health` al backend (mismo origen, sin CORS) |
+| Backend | http://localhost:8080 | `GET /health` para el estado |
+| PostgreSQL | localhost:5432 | Volumen `planillero-pgdata` |
+| MinIO | http://localhost:9000 (API), http://localhost:9001 (consola) | Bucket `evidence` creado por `minio-init` |
+
+Los puertos se publican sólo en `127.0.0.1` y se cambian desde `.env`. La red interna se llama
+`planillero-net` (Compose le antepone el nombre del proyecto).
+
+Cosas para tener en cuenta:
+
+- **Sin RabbitMQ ni Ollama**: quedan afuera del MVP a propósito.
+- **MinIO está provisto, pero el backend todavía guarda las evidencias en disco** (`STORAGE_TYPE=local`,
+  volumen `planillero-storage`). Cuando el backend hable con S3, se cambia `STORAGE_TYPE`.
+- **Claves JWT**: sin configurar, el backend genera un par efímero y los tokens dejan de valer al
+  reiniciar el contenedor.
+- Un `docker compose down` conserva los datos; `docker compose down -v` los borra.
+- El compose falla con un mensaje claro si falta una variable obligatoria (por ejemplo `HMAC_SECRET`).
+- Los valores de `.env.example` son ficticios y sólo para uso local.
+
+Si sólo necesitás la base para correr el backend con `mvnw`, alcanza con `docker compose up postgres`.
+
+### Verificar el entorno
+
+```bash
+sh scripts/verify-compose.sh
+```
+
+Levanta el entorno con un proyecto y puertos propios (no pisa el tuyo), espera a que todo esté
+`healthy`, prueba con `curl` el backend, el proxy, los headers de seguridad y las páginas de error,
+comprueba que los contenedores no corren como root, y lo baja. Sale con código distinto de 0 si algo
+falla, así que se puede usar como paso de CI. En Windows corrélo con Git Bash.
+
 ## Autenticación y RBAC
 
 El backend expone la autenticación centralizada del ecosistema:

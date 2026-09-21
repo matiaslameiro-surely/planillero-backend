@@ -1,0 +1,18 @@
+# Contexto de build mínimo y sin secretos.
+.git
+.gitignore
+.gitattributes
+target/
+.idea/
+.vscode/
+*.iml
+HELP.md
+README.md
+docker-compose.yml
+scripts/
+
+# Nunca deben entrar en una imagen.
+.env
+.env.*
+!.env.example
+*.pem
