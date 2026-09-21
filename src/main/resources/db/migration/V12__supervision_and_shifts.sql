@@ -1,4 +1,4 @@
--- Migración V11: Tablero Central de Supervisión, Mapa Operativo y Monitoreo de Turnos.
+-- Migración V12: Tablero Central de Supervisión, Mapa Operativo y Monitoreo de Turnos.
 --
 -- Nombres de tablas y columnas en inglés por convención del proyecto.
 -- Las tablas de supervisión viven en el esquema `visits`.
