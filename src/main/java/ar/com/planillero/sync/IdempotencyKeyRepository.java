@@ -28,15 +28,19 @@ public interface IdempotencyKeyRepository extends JpaRepository<IdempotencyKey, 
      * {@code 0}. Comprobar la antigüedad en Java y después actualizar volvería a abrir la carrera
      * que esta tabla existe para cerrar.
      *
-     * <p>El {@code request_hash} se reescribe a propósito: quien retoma puede ser otro envío, y a
-     * partir de acá la respuesta guardada va a ser la suya.
+     * <p>Sólo retoma el <strong>mismo</strong> envío: el usuario y la huella del cuerpo tienen que
+     * coincidir. Una reserva vencida habilita a terminar lo que quedó a medias, no a que la clave
+     * sirva para cualquier otra cosa — si no, la protección contra claves reutilizadas caducaría
+     * sola a los dos minutos. Por eso van en el {@code where} y no se reescriben.
      */
     @Modifying
     @Query(value = """
             update sync.idempotency_keys
-               set user_id = :userId, request_hash = :requestHash, created_at = :now
+               set created_at = :now
              where idempotency_key = :key
                and status = 'IN_PROGRESS'
+               and user_id = :userId
+               and request_hash = :requestHash
                and created_at < :vencidaAntesDe
             """, nativeQuery = true)
     int takeOverAbandoned(

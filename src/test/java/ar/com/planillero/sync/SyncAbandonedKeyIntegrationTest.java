@@ -95,6 +95,24 @@ class SyncAbandonedKeyIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("una clave vencida NO se retoma para un cuerpo distinto: sigue siendo 409")
+    void claveVencidaConOtroCuerpoResponde409() throws Exception {
+        UUID clave = UUID.randomUUID();
+
+        // La reserva huérfana quedó asociada a un lote; ahora llega otro distinto con la misma clave.
+        reservaHuerfana(clave, lote(UUID.randomUUID()), "10 minutes");
+
+        UUID otraOperacion = UUID.randomUUID();
+        mockMvc.perform(enviar(clave, lote(otraOperacion)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("idempotency_key_reused"));
+
+        // Que una reserva esté vencida habilita a terminar ESE envío, no a que la clave sirva para
+        // cualquier otra cosa. Si no, la protección contra claves reutilizadas caducaría sola.
+        assertThat(formularioGuardado()).isFalse();
+    }
+
+    @Test
     @DisplayName("retomar una clave abandonada no aplica dos veces lo que ya se habia aplicado")
     void retomarNoDuplica() throws Exception {
         UUID operacion = UUID.randomUUID();

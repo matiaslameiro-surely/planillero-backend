@@ -120,16 +120,20 @@ public class IdempotencyService {
                 "idempotency_key_in_progress",
                 "Hay otro envío en curso con esta clave. Reintentá en unos segundos."));
 
-        if (stored.getStatus() == IdempotencyKeyStatus.IN_PROGRESS && estaAbandonada(stored)
-                && retomar(key, userId, requestHash)) {
-            return new Reservation.Reserved();
-        }
-
         // El mismo mensaje para "es de otro usuario" y para "el cuerpo es distinto", a propósito: un
         // cliente no tiene por qué poder distinguir si una clave existe en la cuenta de otro.
+        //
+        // Va ANTES de considerar si la reserva está vencida: que una reserva caduque habilita a
+        // terminar ese envío, no a que la clave sirva para cualquier otro. Al revés, la protección
+        // contra claves reutilizadas se venceria sola a los dos minutos.
         if (!stored.getUserId().equals(userId) || !stored.getRequestHash().equals(requestHash)) {
             throw ApiException.conflict("idempotency_key_reused",
                     "Esta clave de idempotencia ya se usó para otro envío. Generá una nueva.");
+        }
+
+        if (stored.getStatus() == IdempotencyKeyStatus.IN_PROGRESS && estaAbandonada(stored)
+                && retomar(key, userId, requestHash)) {
+            return new Reservation.Reserved();
         }
 
         if (stored.getStatus() == IdempotencyKeyStatus.IN_PROGRESS) {
