@@ -1,6 +1,7 @@
 package ar.com.planillero.visits;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -37,7 +38,7 @@ import tools.jackson.databind.ObjectMapper;
 public class VisitFormService {
 
     private final VisitFormRecordRepository visitRecordRepository;
-    private final VisitRepository visitRepository;
+    private final VisitRepository planningVisitRepository;
     private final FormTemplateService templateService;
     private final FormTemplateRepository templateRepository;
     private final FormSchemaValidator validator;
@@ -45,13 +46,13 @@ public class VisitFormService {
 
     public VisitFormService(
             VisitFormRecordRepository visitRecordRepository,
-            VisitRepository visitRepository,
+            VisitRepository planningVisitRepository,
             FormTemplateService templateService,
             FormTemplateRepository templateRepository,
             FormSchemaValidator validator,
             ObjectMapper objectMapper) {
         this.visitRecordRepository = visitRecordRepository;
-        this.visitRepository = visitRepository;
+        this.planningVisitRepository = planningVisitRepository;
         this.templateService = templateService;
         this.templateRepository = templateRepository;
         this.validator = validator;
@@ -68,7 +69,7 @@ public class VisitFormService {
     @Transactional
     @AuditLog(eventType = "FORM_SUBMITTED", entityType = "VISIT")
     public FormSubmissionResponse submit(UUID visitId, FormSubmissionRequest request) {
-        return apply(visitId, request, null).form();
+        return applyOnline(visitId, request).form();
     }
 
     /**
@@ -101,23 +102,46 @@ public class VisitFormService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DeferredSubmission submitDeferred(UUID visitId, FormSubmissionRequest request,
             UUID syncOperationId) {
-        return apply(visitId, request, syncOperationId);
+        return applyDeferred(visitId, request, syncOperationId);
     }
 
-    private DeferredSubmission apply(UUID visitId, FormSubmissionRequest request,
-            UUID syncOperationId) {
-        boolean deferred = syncOperationId != null;
-        VisitFormRecord visit = (deferred
-                ? visitRepository.findByIdForUpdate(visitId)
-                : visitRecordRepository.findById(visitId))
+    private DeferredSubmission applyOnline(UUID visitId, FormSubmissionRequest request) {
+        // Carga en línea: lee el registro de formulario (sin lock pesimista)
+        VisitFormRecord record = visitRecordRepository.findById(visitId)
                 .orElseThrow(() -> ApiException.notFound(
                         "visit_not_found", "No existe la visita indicada."));
 
-        if (deferred && syncOperationId.equals(visit.getSyncOperationId())) {
-            // Ya se aplicó, y con esta misma operación: el reintento no vuelve a escribir. Se
-            // devuelve la confirmación original, no una nueva, para que el cliente vea siempre lo
-            // mismo que la primera vez.
-            return new DeferredSubmission(describeStored(visit), true);
+        return applyCommon(record, request, null);
+    }
+
+    private DeferredSubmission applyDeferred(UUID visitId, FormSubmissionRequest request,
+            UUID syncOperationId) {
+        // Carga diferida: lee la visita de planificación con lock pesimista para evitar carreras
+        Visit visit = planningVisitRepository.findByIdForUpdate(visitId)
+                .orElseThrow(() -> ApiException.notFound(
+                        "visit_not_found", "No existe la visita indicada."));
+
+        // Verificar si ya se aplicó esta operación
+        Optional<VisitFormRecord> existingRecord = visitRecordRepository.findBySyncOperationId(syncOperationId);
+        if (existingRecord.isPresent() && existingRecord.get().getId().equals(visit.getId())) {
+            return new DeferredSubmission(describeStored(existingRecord.get()), true);
+        }
+
+        // Obtener el registro de formulario asociado a esta visita
+        VisitFormRecord record = visitRecordRepository.findById(visit.getId())
+                .orElseThrow(() -> ApiException.notFound(
+                        "visit_not_found", "No existe el registro de formulario para la visita."));
+
+        return applyCommon(record, request, syncOperationId);
+    }
+
+    private DeferredSubmission applyCommon(VisitFormRecord record, FormSubmissionRequest request,
+            UUID syncOperationId) {
+        boolean deferred = syncOperationId != null;
+
+        if (deferred && syncOperationId.equals(record.getSyncOperationId())) {
+            // Ya se aplicó, y con esta misma operación: el reintento no vuelve a escribir.
+            return new DeferredSubmission(describeStored(record), true);
         }
 
         FormTemplate template = templateService.resolveForSubmission(
@@ -128,25 +152,22 @@ public class VisitFormService {
         Instant submittedAt = Instant.now();
         String responses = objectMapper.writeValueAsString(request.responses());
         if (deferred) {
-            visit.submitDeferredForm(template.getId(), responses, submittedAt, syncOperationId);
+            record.submitDeferredForm(template.getId(), responses, submittedAt, syncOperationId);
         } else {
-            visit.submitForm(template.getId(), responses, submittedAt);
+            record.submitForm(template.getId(), responses, submittedAt);
         }
-        // `saveAndFlush` y no `save`: en el camino diferido, la violación del índice único de
-        // `sync_operation_id` —la misma operación aplicada sobre otra visita— tiene que salir acá y
-        // no al cerrar la transacción, que es donde ya no se puede convertir en un resultado por
-        // operación.
-        visitRepository.saveAndFlush(visit);
+        // saveAndFlush en el repo del registro de formulario
+        visitRecordRepository.saveAndFlush(record);
 
         return new DeferredSubmission(new FormSubmissionResponse(
-                visit.getId(), template.getTemplateKey(), template.getVersion(), submittedAt), false);
+                record.getId(), template.getTemplateKey(), template.getVersion(), submittedAt), false);
     }
 
     /** Reconstruye la confirmación de un formulario ya guardado, tal como se devolvió la primera vez. */
-    private FormSubmissionResponse describeStored(VisitFormRecord visit) {
-        FormTemplate template = templateService.requireById(visit.getFormTemplateId());
-        return new FormSubmissionResponse(visit.getId(), template.getTemplateKey(),
-                template.getVersion(), visit.getFormSubmittedAt());
+    private FormSubmissionResponse describeStored(VisitFormRecord record) {
+        FormTemplate template = templateService.requireById(record.getFormTemplateId());
+        return new FormSubmissionResponse(record.getId(), template.getTemplateKey(),
+                template.getVersion(), record.getFormSubmittedAt());
     }
 
     /**
@@ -157,10 +178,10 @@ public class VisitFormService {
      */
     @Transactional(readOnly = true)
     public VisitFormDetailDto getFormDetail(UUID visitId) {
-        VisitFormRecord record = visitRecordRepository.findById(visitId)
+        Visit visit = planningVisitRepository.findById(visitId)
                 .orElseThrow(() -> ApiException.notFound(
                         "visit_not_found", "No existe la visita indicada."));
-        Visit visit = visitRepository.findById(visitId)
+        VisitFormRecord record = visitRecordRepository.findById(visitId)
                 .orElseThrow(() -> ApiException.notFound(
                         "visit_not_found", "No existe la visita indicada."));
 
