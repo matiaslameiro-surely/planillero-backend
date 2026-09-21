@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
+import ar.com.planillero.audit.AuditLog;
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.planning.dto.StartVisitRequest;
 import ar.com.planillero.planning.dto.StartVisitResponse;
@@ -43,6 +44,7 @@ public class VisitStartService {
      * recién entonces se valida el estado, para que dos inicios simultáneos no se pisen.
      */
     @Transactional
+    @AuditLog(eventType = "VISIT_STARTED", entityType = "VISIT")
     public StartVisitResponse start(UUID visitId, StartVisitRequest request, String username) {
         User operator = userRepository.findByUsername(username)
                 .orElseThrow(() -> ApiException.unauthorized("unauthorized", "Sesión inválida."));
