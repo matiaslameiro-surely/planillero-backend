@@ -11,9 +11,14 @@ import ar.com.planillero.audit.AuditLog;
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.forms.FormSchemaValidator;
 import ar.com.planillero.forms.FormTemplate;
+import ar.com.planillero.forms.FormTemplateRepository;
 import ar.com.planillero.forms.FormTemplateService;
 import ar.com.planillero.forms.dto.FormSubmissionRequest;
 import ar.com.planillero.forms.dto.FormSubmissionResponse;
+import ar.com.planillero.planning.Visit;
+import ar.com.planillero.planning.VisitRepository;
+import ar.com.planillero.visits.dto.VisitFormDetailDto;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -31,18 +36,24 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class VisitFormService {
 
-    private final VisitFormRecordRepository visitRepository;
+    private final VisitFormRecordRepository visitRecordRepository;
+    private final VisitRepository visitRepository;
     private final FormTemplateService templateService;
+    private final FormTemplateRepository templateRepository;
     private final FormSchemaValidator validator;
     private final ObjectMapper objectMapper;
 
     public VisitFormService(
-            VisitFormRecordRepository visitRepository,
+            VisitFormRecordRepository visitRecordRepository,
+            VisitRepository visitRepository,
             FormTemplateService templateService,
+            FormTemplateRepository templateRepository,
             FormSchemaValidator validator,
             ObjectMapper objectMapper) {
+        this.visitRecordRepository = visitRecordRepository;
         this.visitRepository = visitRepository;
         this.templateService = templateService;
+        this.templateRepository = templateRepository;
         this.validator = validator;
         this.objectMapper = objectMapper;
     }
@@ -98,7 +109,7 @@ public class VisitFormService {
         boolean deferred = syncOperationId != null;
         VisitFormRecord visit = (deferred
                 ? visitRepository.findByIdForUpdate(visitId)
-                : visitRepository.findById(visitId))
+                : visitRecordRepository.findById(visitId))
                 .orElseThrow(() -> ApiException.notFound(
                         "visit_not_found", "No existe la visita indicada."));
 
@@ -136,5 +147,43 @@ public class VisitFormService {
         FormTemplate template = templateService.requireById(visit.getFormTemplateId());
         return new FormSubmissionResponse(visit.getId(), template.getTemplateKey(),
                 template.getVersion(), visit.getFormSubmittedAt());
+    }
+
+    /**
+     * Devuelve la visita con su formulario cargado, para el visor del expediente digital.
+     *
+     * <p>Reino de solo lectura: no valida nada ni muta estado. Una visita sin formulario devuelve los
+     * campos de formulario en {@code null}; si la visita no existe, {@code 404 visit_not_found}.
+     */
+    @Transactional(readOnly = true)
+    public VisitFormDetailDto getFormDetail(UUID visitId) {
+        VisitFormRecord record = visitRecordRepository.findById(visitId)
+                .orElseThrow(() -> ApiException.notFound(
+                        "visit_not_found", "No existe la visita indicada."));
+        Visit visit = visitRepository.findById(visitId)
+                .orElseThrow(() -> ApiException.notFound(
+                        "visit_not_found", "No existe la visita indicada."));
+
+        UUID formTemplateId = record.getFormTemplateId();
+        if (formTemplateId == null) {
+            return new VisitFormDetailDto(
+                    visit.getId(), visit.getCode(), visit.getAddress(),
+                    visit.getLatitude(), visit.getLongitude(), visit.getJurisdiction(),
+                    visit.getStatus(), visit.getUrgency(), visit.getCreatedAt(),
+                    null, null, null, null, null, null);
+        }
+
+        FormTemplate template = templateRepository.findById(formTemplateId).orElse(null);
+        JsonNode responses = objectMapper.readTree(record.getResponsesJson());
+        return new VisitFormDetailDto(
+                visit.getId(), visit.getCode(), visit.getAddress(),
+                visit.getLatitude(), visit.getLongitude(), visit.getJurisdiction(),
+                visit.getStatus(), visit.getUrgency(), visit.getCreatedAt(),
+                formTemplateId,
+                template != null ? template.getTemplateKey() : null,
+                template != null ? template.getVersion() : null,
+                template != null ? template.getName() : null,
+                responses,
+                record.getFormSubmittedAt());
     }
 }
