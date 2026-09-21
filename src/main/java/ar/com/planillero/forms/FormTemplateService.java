@@ -73,6 +73,17 @@ public class FormTemplateService {
         return template;
     }
 
+    /**
+     * La plantilla con la que se validó un formulario ya guardado.
+     *
+     * <p>Devuelve la versión puntual, vigente o no: lo que ya se aceptó se interpreta con las reglas
+     * que lo aceptaron, no con las de hoy.
+     */
+    public FormTemplate requireById(java.util.UUID id) {
+        return repository.findById(id).orElseThrow(() -> new IllegalStateException(
+                "Un formulario guardado apunta a la plantilla " + id + ", que no existe."));
+    }
+
     private FormTemplate requireLatestActive(String templateKey) {
         return repository.findFirstByTemplateKeyAndActiveTrueOrderByVersionDesc(templateKey)
                 .orElseThrow(() -> ApiException.notFound(
