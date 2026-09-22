@@ -8,7 +8,7 @@ Auditoría integral de seguridad del backend Planillero (Spring Boot 4.1.1, Java
 
 | # | Riesgo | Categoría | Estado | Medida Principal |
 |---|---|---|---|---|
-| 1 | Exposición de API Keys / Secretos | API Keys | ✅ Mitigado | Variables de entorno obligatorias, `.gitignore`, sin defaults prod |
+| 1 | Exposición de API Keys / Secretos | API Keys | ✅ Mitigado | Variables de entorno obligatorias, `.gitignore`, defaults solo dev, sin defaults de producción |
 | 2 | Fuga de PII en logs / auditoría | Privacidad | ✅ Mitigado | `AuditMasker` regex `password\|token\|secret\|dni`, DTOs limpios |
 | 3 | Fuerza bruta en auth / 2FA | Acceso | ✅ Mitigado | Rate limiting 5 intentos / 15 min, login constant-time |
 | 4 | Alteración logs / evidencias | Inmutabilidad / No Repudio | ✅ Mitigado | Triggers BD append-only, cadena SHA-256, HMAC manifiestos |
@@ -24,11 +24,11 @@ Auditoría integral de seguridad del backend Planillero (Spring Boot 4.1.1, Java
 | Cadena SHA-256 auditoría | ✅ Verificado | `GET /api/v1/audit/verify` → `ok: true` |
 | Triggers BD append-only | ✅ Migración V11 | `V11__audit_log_schema.sql` |
 | HMAC manifiestos | ✅ 3/3 pass | `CryptoServiceTest` |
-| Escaneo secretos Git | ✅ 0 hallazgos | `truffleHog` / `git-secrets` en `main` |
+| Escaneo manual de secretos en árbol e historial | ✅ 0 archivos | `git ls-files` + `git log` sobre `.env*`, `*.key`, `*.pem`, `*.p12` |
 
 ## Video Demostrativo
 
-**Enlace público:** `[PENDIENTE - Insertar URL de YouTube / Google Drive]`
+**Enlace público:** `[Diferido a backlog - PLAN-32]` *(decisión de Sprint 4: video demostrativo dedicado; guion abajo, listo para grabación)*
 
 **Guion del video (≤ 3 min):**
 1. **0:00-0:30** - Login con usuario OPERATOR + 2FA TOTP (muestra challenge/verify)

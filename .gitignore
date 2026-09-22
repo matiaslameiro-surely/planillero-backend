@@ -32,12 +32,13 @@ build/
 ### VS Code ###
 .vscode/
 
+### Secrets / Keys ###
 # Variables de entorno locales (secretos): nunca se versionan. El ejemplo sí.
 .env
 .env.*
 !.env.example
 
-### Secrets / Keys ### — claves y certificados nunca se versionan
+# Claves y certificados (JWT RSA, HMAC, TLS): nunca se versionan.
 *.key
 *.pem
 *.p12
