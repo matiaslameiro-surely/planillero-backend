@@ -36,3 +36,8 @@ build/
 .env
 .env.*
 !.env.example
+
+### Secrets / Keys ### — claves y certificados nunca se versionan
+*.key
+*.pem
+*.p12
