@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Variables de entorno locales (secretos): nunca se versionan. El ejemplo sí.
+.env
+.env.*
+!.env.example
