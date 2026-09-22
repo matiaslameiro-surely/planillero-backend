@@ -33,6 +33,11 @@ public class SecurityConfig {
             RestAccessDeniedHandler accessDeniedHandler) throws Exception {
 
         http
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'"))
+                        .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
+                )
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
