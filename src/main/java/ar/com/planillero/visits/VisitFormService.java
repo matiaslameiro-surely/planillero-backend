@@ -1,6 +1,8 @@
 package ar.com.planillero.visits;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -8,7 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import ar.com.planillero.audit.AuditChainService;
 import ar.com.planillero.audit.AuditLog;
+import ar.com.planillero.audit.AuditRequestContext;
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.forms.FormSchemaValidator;
 import ar.com.planillero.forms.FormTemplate;
@@ -43,6 +47,8 @@ public class VisitFormService {
     private final FormTemplateRepository templateRepository;
     private final FormSchemaValidator validator;
     private final ObjectMapper objectMapper;
+    private final AuditChainService auditChainService;
+    private final AuditRequestContext auditRequestContext;
 
     public VisitFormService(
             VisitFormRecordRepository visitRecordRepository,
@@ -50,13 +56,17 @@ public class VisitFormService {
             FormTemplateService templateService,
             FormTemplateRepository templateRepository,
             FormSchemaValidator validator,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AuditChainService auditChainService,
+            AuditRequestContext auditRequestContext) {
         this.visitRecordRepository = visitRecordRepository;
         this.planningVisitRepository = planningVisitRepository;
         this.templateService = templateService;
         this.templateRepository = templateRepository;
         this.validator = validator;
         this.objectMapper = objectMapper;
+        this.auditChainService = auditChainService;
+        this.auditRequestContext = auditRequestContext;
     }
 
     /**
@@ -159,8 +169,35 @@ public class VisitFormService {
         // saveAndFlush en el repo del registro de formulario
         visitRecordRepository.saveAndFlush(record);
 
-        return new DeferredSubmission(new FormSubmissionResponse(
-                record.getId(), template.getTemplateKey(), template.getVersion(), submittedAt), false);
+        FormSubmissionResponse response = new FormSubmissionResponse(
+                record.getId(), template.getTemplateKey(), template.getVersion(), submittedAt);
+
+        if (deferred) {
+            auditDeferred(record.getId(), request, response, syncOperationId);
+        }
+
+        return new DeferredSubmission(response, false);
+    }
+
+    private void auditDeferred(UUID visitId, FormSubmissionRequest request,
+            FormSubmissionResponse response, UUID syncOperationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("method", "submitDeferred");
+        payload.put("args", Map.of(
+                "arg0", visitId.toString(),
+                "arg1", request,
+                "arg2", syncOperationId.toString()
+        ));
+        payload.put("result", response);
+
+        auditChainService.append(
+                "FORM_SUBMITTED",
+                "VISIT",
+                visitId.toString(),
+                auditRequestContext.currentUsername(),
+                auditRequestContext.currentIp(),
+                auditRequestContext.currentDeviceId(),
+                payload);
     }
 
     /** Reconstruye la confirmación de un formulario ya guardado, tal como se devolvió la primera vez. */

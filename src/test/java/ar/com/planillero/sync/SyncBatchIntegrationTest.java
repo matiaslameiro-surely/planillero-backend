@@ -2,6 +2,7 @@ package ar.com.planillero.sync;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -19,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.audit.AuditChainService;
 import com.jayway.jsonpath.JsonPath;
 
 /**
@@ -38,6 +40,9 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private AuditChainService auditChainService;
 
     private UUID visita;
 
@@ -118,6 +123,20 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
         assertThat(jdbcTemplate.queryForObject(
                 "select sync_operation_id from visits.visits where id = ?", UUID.class, visita))
                 .isEqualTo(operacion);
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'FORM_SUBMITTED' and entity_type = 'VISIT'",
+                Integer.class, visita.toString()))
+                .isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select username from audit.audit_logs where entity_id = ? and event_type = 'FORM_SUBMITTED'",
+                String.class, visita.toString()))
+                .isEqualTo("operador.demo");
+
+        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", visita.toString())
+                        .header(HttpHeaders.AUTHORIZATION, adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
     }
 
     @Test
@@ -157,6 +176,10 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.results[0].form.templateKey").value("mantenimiento-general"));
 
         assertThat(formulariosGuardados()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'FORM_SUBMITTED'",
+                Integer.class, visita.toString()))
+                .isEqualTo(1);
     }
 
     @Test
@@ -211,6 +234,14 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
 
         // La buena quedó guardada pese a que dos de sus compañeras de lote fallaron.
         assertThat(formulariosGuardados()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'FORM_SUBMITTED'",
+                Integer.class, visita.toString()))
+                .isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'FORM_SUBMITTED'",
+                Integer.class, visitaInexistente.toString()))
+                .isZero();
     }
 
     @Test
@@ -247,6 +278,53 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.error").value("invalid_request"));
     }
 
+    @Test
+    @DisplayName("la cadena de custodia sigue verificando íntegra tras procesar un lote de formularios diferidos")
+    void cadenaDeCustodiaSigueIntegraDespuesDeLote() throws Exception {
+        UUID visitaA = crearOtraVisita("S-AUD-001");
+        UUID visitaB = crearOtraVisita("S-AUD-002");
+        UUID operacionA = UUID.randomUUID();
+        UUID operacionB = UUID.randomUUID();
+
+        String cuerpo = """
+                {"operations": [%s, %s]}
+                """.formatted(operacion(operacionA, visitaA), operacion(operacionB, visitaB));
+
+        mockMvc.perform(enviar(UUID.randomUUID(), cuerpo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results[0].status").value("APPLIED"))
+                .andExpect(jsonPath("$.results[1].status").value("APPLIED"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'FORM_SUBMITTED'",
+                Integer.class, visitaA.toString()))
+                .isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from audit.audit_logs where entity_id = ? and event_type = 'FORM_SUBMITTED'",
+                Integer.class, visitaB.toString()))
+                .isEqualTo(1);
+
+        // Verificación de integridad por visita y global
+        assertThat(auditChainService.verify(visitaA.toString()).ok()).isTrue();
+        assertThat(auditChainService.verify(visitaB.toString()).ok()).isTrue();
+        assertThat(auditChainService.verify(null).ok()).isTrue();
+
+        mockMvc.perform(get("/api/v1/audit/verify")
+                        .header(HttpHeaders.AUTHORIZATION, adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+    }
+
+    private UUID crearOtraVisita(String code) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into visits.visits
+                    (id, code, address, latitude, longitude, jurisdiction, status, urgency)
+                values (?, ?, 'Calle Ficticia 300', -34.600000, -58.400000, 'ZONA_NORTE', 'PENDING', 'LOW')
+                """, id, code);
+        return id;
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder enviar(
             UUID clave, String cuerpo) throws Exception {
         return post(BATCH)
@@ -279,6 +357,16 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
         String json = mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
                         .content("""
                                 {"username": "operador.demo", "password": "Operador123!"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return "Bearer " + JsonPath.read(json, "$.accessToken");
+    }
+
+    private String adminToken() throws Exception {
+        String json = mockMvc.perform(post("/api/v1/auth/login").contentType(APPLICATION_JSON)
+                        .content("""
+                                {"username": "admin.demo", "password": "Admin123!"}
                                 """))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
