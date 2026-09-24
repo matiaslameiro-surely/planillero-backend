@@ -197,10 +197,12 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void verifyWithAnUnknownIdOrCodeAnswers404InSpanish() throws Exception {
-        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", "66")
-                        .header("Authorization", "Bearer " + adminToken()))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("No existe una visita con ese ID o código."));
+        for (String unknown : new String[] {"66", "V-9999", UUID.randomUUID().toString()}) {
+            mockMvc.perform(get("/api/v1/audit/verify").param("visitId", unknown)
+                            .header("Authorization", "Bearer " + adminToken()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.message").value("No existe una visita con ese ID o código."));
+        }
     }
 
     @Test

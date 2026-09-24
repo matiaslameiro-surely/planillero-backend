@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -89,7 +90,8 @@ public class AuditController {
 
     /**
      * Vacío verifica la cadena completa. Si no, acepta el UUID de la visita o su código
-     * ({@code V-1001}), que es lo que conoce el supervisor.
+     * ({@code V-1001}), que es lo que conoce el supervisor. Si no hay visita, 404: sin esta
+     * comprobación un UUID inexistente verificaría un segmento vacío y respondería «íntegra».
      */
     private String resolveVisitId(String visitId) {
         if (visitId == null || visitId.isBlank()) {
@@ -97,11 +99,10 @@ public class AuditController {
         }
         String value = visitId.trim();
         UUID uuid = parseUuid(value);
-        if (uuid != null) {
-            return uuid.toString();
-        }
-        return visitRepository.findByCode(value)
-                .map((visit) -> visit.getId().toString())
+        Optional<Visit> visit = uuid != null
+                ? visitRepository.findById(uuid)
+                : visitRepository.findByCode(value);
+        return visit.map((found) -> found.getId().toString())
                 .orElseThrow(() -> ApiException.notFound("visit_not_found",
                         "No existe una visita con ese ID o código."));
     }
