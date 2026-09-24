@@ -17,11 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import ar.com.planillero.audit.AuditLog;
+import ar.com.planillero.common.ApiException;
 import ar.com.planillero.evidence.dto.EvidenceResponse;
 import ar.com.planillero.evidence.model.Evidence;
 import ar.com.planillero.evidence.model.EvidenceType;
 import ar.com.planillero.evidence.repository.EvidenceRepository;
 import ar.com.planillero.evidence.storage.ObjectStorageService;
+import ar.com.planillero.planning.VisitRepository;
 
 /**
  * Servicio de negocio para ingesta y gestión de evidencias periciales con cálculo SHA-256 en streaming.
@@ -31,12 +33,15 @@ public class EvidenceService {
 
     private final EvidenceRepository evidenceRepository;
     private final ObjectStorageService storageService;
+    private final VisitRepository visitRepository;
 
     public EvidenceService(
             EvidenceRepository evidenceRepository,
-            ObjectStorageService storageService) {
+            ObjectStorageService storageService,
+            VisitRepository visitRepository) {
         this.evidenceRepository = evidenceRepository;
         this.storageService = storageService;
+        this.visitRepository = visitRepository;
     }
 
     /**
@@ -57,6 +62,9 @@ public class EvidenceService {
         }
         if (visitId == null) {
             throw new IllegalArgumentException("El identificador de visita es obligatorio");
+        }
+        if (!visitRepository.existsById(visitId)) {
+            throw ApiException.notFound("visit_not_found", "No existe la visita indicada.");
         }
         if (evidenceType == null) {
             evidenceType = EvidenceType.PHOTO;
@@ -119,6 +127,12 @@ public class EvidenceService {
 
     @Transactional(readOnly = true)
     public List<EvidenceResponse> getEvidencesByVisit(UUID visitId) {
+        if (visitId == null) {
+            throw new IllegalArgumentException("El identificador de visita es obligatorio");
+        }
+        if (!visitRepository.existsById(visitId)) {
+            throw ApiException.notFound("visit_not_found", "No existe la visita indicada.");
+        }
         return evidenceRepository.findByVisitIdOrderByCapturedAtAsc(visitId).stream()
                 .map(EvidenceResponse::from)
                 .toList();
@@ -126,9 +140,15 @@ public class EvidenceService {
 
     @Transactional(readOnly = true)
     public Evidence getEvidenceEntity(UUID visitId, UUID evidenceId) {
+        if (visitId == null) {
+            throw new IllegalArgumentException("El identificador de visita es obligatorio");
+        }
+        if (!visitRepository.existsById(visitId)) {
+            throw ApiException.notFound("visit_not_found", "No existe la visita indicada.");
+        }
         return evidenceRepository.findByIdAndVisitId(evidenceId, visitId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Evidencia no encontrada para la visita indicada: " + evidenceId));
+                .orElseThrow(() -> ApiException.notFound(
+                        "evidence_not_found", "Evidencia no encontrada para la visita indicada: " + evidenceId));
     }
 
     @Transactional(readOnly = true)

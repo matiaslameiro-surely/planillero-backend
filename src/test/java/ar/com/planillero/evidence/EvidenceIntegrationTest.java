@@ -1,6 +1,7 @@
 package ar.com.planillero.evidence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -43,6 +44,10 @@ import ar.com.planillero.evidence.storage.WormPolicyViolationException;
 @AutoConfigureMockMvc
 class EvidenceIntegrationTest extends AbstractIntegrationTest {
 
+    private static final UUID SEED_VISIT_ID_1 = UUID.fromString("a0000001-0000-4000-8000-000000000001");
+    private static final UUID SEED_VISIT_ID_2 = UUID.fromString("a0000001-0000-4000-8000-000000000002");
+    private static final UUID SEED_VISIT_ID_3 = UUID.fromString("a0000001-0000-4000-8000-000000000003");
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -78,7 +83,7 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("Subida multipart de foto con cálculo automático de SHA-256 en streaming")
     void uploadEvidenceSuccess() throws Exception {
-        UUID visitId = UUID.randomUUID();
+        UUID visitId = SEED_VISIT_ID_1;
         byte[] content = "fotografia pericial de fachada".getBytes(StandardCharsets.UTF_8);
         String expectedHash = cryptoService.calculateSha256(content);
 
@@ -101,9 +106,139 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Subida de evidencia a visita inexistente devuelve 404 visit_not_found y no guarda en storage")
+    void uploadEvidenceNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+        byte[] content = "fotografia de visita fantasma".getBytes(StandardCharsets.UTF_8);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "fantasma.jpg",
+                "image/jpeg",
+                content);
+
+        mockMvc.perform(multipart("/api/v1/visits/{visitId}/evidences", nonExistentVisitId)
+                        .file(file)
+                        .param("type", "PHOTO")
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"))
+                .andExpect(jsonPath("$.message").value("No existe la visita indicada."));
+
+        // Verificar que no se creó ningún archivo en la carpeta de la visita inexistente
+        File visitDir = new File(storageProperties.getLocalDir(), "visits/" + nonExistentVisitId);
+        assertFalse(visitDir.exists(), "No debe crearse ningún directorio ni archivo en storage para una visita inexistente");
+    }
+
+    @Test
+    @DisplayName("Listado de evidencias de visita inexistente devuelve 404 visit_not_found")
+    void getEvidencesNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/evidences", nonExistentVisitId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Descarga de archivo con evidencia inexistente devuelve 404 evidence_not_found")
+    void getEvidenceFileNonExistentEvidenceReturns404() throws Exception {
+        UUID nonExistentEvidenceId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/evidences/{evidenceId}/file", SEED_VISIT_ID_1, nonExistentEvidenceId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("evidence_not_found"));
+    }
+
+    @Test
+    @DisplayName("Descarga de archivo con visita inexistente devuelve 404 visit_not_found")
+    void getEvidenceFileNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+        UUID nonExistentEvidenceId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/evidences/{evidenceId}/file", nonExistentVisitId, nonExistentEvidenceId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Consultar manifiesto de visita inexistente devuelve 404 visit_not_found")
+    void getManifestNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/manifest", nonExistentVisitId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Consultar manifiesto de visita sin manifiesto devuelve 404 manifest_not_found")
+    void getManifestWithoutManifestReturns404() throws Exception {
+        UUID visitWithoutManifest = SEED_VISIT_ID_3;
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/manifest", visitWithoutManifest)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("manifest_not_found"));
+    }
+
+    @Test
+    @DisplayName("Verificar manifiesto de visita inexistente devuelve 404 visit_not_found")
+    void verifyManifestNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest/verify", nonExistentVisitId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Verificar manifiesto de visita sin manifiesto devuelve 404 manifest_not_found")
+    void verifyManifestWithoutManifestReturns404() throws Exception {
+        UUID visitWithoutManifest = SEED_VISIT_ID_3;
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest/verify", visitWithoutManifest)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("manifest_not_found"));
+    }
+
+    @Test
+    @DisplayName("Crear manifiesto para visita inexistente devuelve 404 visit_not_found")
+    void createManifestNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+        CreateManifestRequest request = new CreateManifestRequest("Dispositivo", List.of(UUID.randomUUID()));
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest", nonExistentVisitId)
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Crear manifiesto con evidencia inexistente devuelve 404 evidence_not_found")
+    void createManifestNonExistentEvidenceReturns404() throws Exception {
+        CreateManifestRequest request = new CreateManifestRequest("Dispositivo", List.of(UUID.randomUUID()));
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest", SEED_VISIT_ID_1)
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("evidence_not_found"));
+    }
+
+    @Test
     @DisplayName("Rechazo con 400 cuando el hash declarado en X-Content-SHA256 difiere del contenido real")
     void uploadEvidenceIntegrityMismatch() throws Exception {
-        UUID visitId = UUID.randomUUID();
+        UUID visitId = SEED_VISIT_ID_1;
         byte[] content = "imagen legitima".getBytes(StandardCharsets.UTF_8);
 
         MockMultipartFile file = new MockMultipartFile(
@@ -124,7 +259,7 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("Ciclo completo de sellado pericial y verificación criptográfica (VERIFIED vs TAMPERED)")
     void manifestLifecycleAndTamperDetection() throws Exception {
-        UUID visitId = UUID.randomUUID();
+        UUID visitId = SEED_VISIT_ID_2;
 
         // 1. Subir foto
         byte[] photoBytes = "foto del entorno pericial".getBytes(StandardCharsets.UTF_8);

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
 import ar.com.planillero.audit.AuditLog;
+import ar.com.planillero.common.ApiException;
 import ar.com.planillero.evidence.crypto.CryptoService;
 import ar.com.planillero.evidence.dto.CreateManifestRequest;
 import ar.com.planillero.evidence.dto.ManifestResponse;
@@ -27,6 +28,7 @@ import ar.com.planillero.evidence.model.VisitManifest;
 import ar.com.planillero.evidence.repository.EvidenceRepository;
 import ar.com.planillero.evidence.repository.VisitManifestRepository;
 import ar.com.planillero.evidence.storage.ObjectStorageService;
+import ar.com.planillero.planning.VisitRepository;
 
 /**
  * Servicio para generación, sellado con firma digital HMAC y verificación pericial de manifiestos.
@@ -38,17 +40,20 @@ public class ManifestService {
     private final EvidenceRepository evidenceRepository;
     private final CryptoService cryptoService;
     private final ObjectStorageService storageService;
+    private final VisitRepository visitRepository;
     private final ObjectMapper objectMapper;
 
     public ManifestService(
             VisitManifestRepository manifestRepository,
             EvidenceRepository evidenceRepository,
             CryptoService cryptoService,
-            ObjectStorageService storageService) {
+            ObjectStorageService storageService,
+            VisitRepository visitRepository) {
         this.manifestRepository = manifestRepository;
         this.evidenceRepository = evidenceRepository;
         this.cryptoService = cryptoService;
         this.storageService = storageService;
+        this.visitRepository = visitRepository;
         this.objectMapper = new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
     }
 
@@ -61,6 +66,9 @@ public class ManifestService {
         if (visitId == null) {
             throw new IllegalArgumentException("El identificador de visita es obligatorio");
         }
+        if (!visitRepository.existsById(visitId)) {
+            throw ApiException.notFound("visit_not_found", "No existe la visita indicada.");
+        }
         if (userId == null) {
             throw new IllegalArgumentException("El identificador de usuario firmante es obligatorio");
         }
@@ -71,8 +79,8 @@ public class ManifestService {
         List<Evidence> evidences = new ArrayList<>();
         for (UUID evidenceId : request.evidenceIds()) {
             Evidence ev = evidenceRepository.findByIdAndVisitId(evidenceId, visitId)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "La evidencia con ID " + evidenceId + " no pertenece a la visita " + visitId));
+                    .orElseThrow(() -> ApiException.notFound(
+                            "evidence_not_found", "La evidencia con ID " + evidenceId + " no pertenece a la visita " + visitId));
             evidences.add(ev);
         }
 
@@ -120,8 +128,14 @@ public class ManifestService {
 
     @Transactional(readOnly = true)
     public ManifestResponse getLatestManifest(UUID visitId) {
+        if (visitId == null) {
+            throw new IllegalArgumentException("El identificador de visita es obligatorio");
+        }
+        if (!visitRepository.existsById(visitId)) {
+            throw ApiException.notFound("visit_not_found", "No existe la visita indicada.");
+        }
         VisitManifest manifest = manifestRepository.findFirstByVisitIdOrderByCreatedAtDesc(visitId)
-                .orElseThrow(() -> new IllegalArgumentException("No existe manifiesto registrado para la visita: " + visitId));
+                .orElseThrow(() -> ApiException.notFound("manifest_not_found", "No existe manifiesto registrado para la visita: " + visitId));
         return ManifestResponse.from(manifest);
     }
 
@@ -132,8 +146,14 @@ public class ManifestService {
      */
     @Transactional
     public VerificationResultResponse verifyManifest(UUID visitId) {
+        if (visitId == null) {
+            throw new IllegalArgumentException("El identificador de visita es obligatorio");
+        }
+        if (!visitRepository.existsById(visitId)) {
+            throw ApiException.notFound("visit_not_found", "No existe la visita indicada.");
+        }
         VisitManifest manifest = manifestRepository.findFirstByVisitIdOrderByCreatedAtDesc(visitId)
-                .orElseThrow(() -> new IllegalArgumentException("No existe manifiesto registrado para la visita: " + visitId));
+                .orElseThrow(() -> ApiException.notFound("manifest_not_found", "No existe manifiesto registrado para la visita: " + visitId));
 
         boolean signatureValid;
         boolean allEvidencesIntact = true;
