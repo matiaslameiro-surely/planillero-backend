@@ -159,6 +159,62 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
         assertThat(entityIds).contains(visit.toString());
     }
 
+    // --- PLAN-46: identificar las visitas por su código ---
+
+    @Test
+    void logsIncludeTheVisitCodeForVisitRows() throws Exception {
+        UUID visit = newVisit();
+        String code = codeOf(visit);
+        assign(OPERADOR_DEMO, LocalDate.of(2026, 11, 15), visit);
+
+        String json = mockMvc.perform(get("/api/v1/audit/logs").param("eventType", "VISIT_ASSIGNED")
+                        .param("size", "100")
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        java.util.List<String> codes = JsonPath.read(json,
+                "$.content[?(@.entityId == '" + visit + "')].entityCode");
+        assertThat(codes).containsExactly(code);
+    }
+
+    @Test
+    void verifyAcceptsTheVisitCodeAndTheChainStaysIntact() throws Exception {
+        UUID visit = newVisit();
+        assign(OPERADOR_DEMO, LocalDate.of(2026, 11, 16), visit);
+
+        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", codeOf(visit))
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+
+        // Resolver el código es sólo lectura: la cadena completa sigue íntegra.
+        mockMvc.perform(get("/api/v1/audit/verify")
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+    }
+
+    @Test
+    void verifyWithAnUnknownIdOrCodeAnswers404InSpanish() throws Exception {
+        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", "66")
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("No existe una visita con ese ID o código."));
+    }
+
+    @Test
+    void aMalformedUuidParameterAnswers400InSpanish() throws Exception {
+        mockMvc.perform(get("/api/v1/visitas/{id}/formulario", "no-es-un-uuid")
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("El parámetro «id» tiene un formato inválido."));
+    }
+
+    private String codeOf(UUID visit) {
+        return jdbc.queryForObject("select code from visits.visits where id = ?", String.class, visit);
+    }
+
     private UUID newVisit() {
         UUID id = UUID.randomUUID();
         String code = "T-AUDIT-" + (++visitCounter);

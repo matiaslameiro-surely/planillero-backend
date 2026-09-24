@@ -15,6 +15,9 @@ public interface VisitRepository extends JpaRepository<Visit, UUID> {
 
     List<Visit> findByJurisdictionOrderByCodeAsc(String jurisdiction);
 
+    /** El código es único ({@code visits.code unique}): lo usa la auditoría para verificar por código. */
+    Optional<Visit> findByCode(String code);
+
     /**
      * Lee la visita bloqueando su fila hasta el fin de la transacción.
      *
