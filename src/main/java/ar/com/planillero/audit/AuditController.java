@@ -101,7 +101,7 @@ public class AuditController {
         UUID uuid = parseUuid(value);
         Optional<Visit> visit = uuid != null
                 ? visitRepository.findById(uuid)
-                : visitRepository.findByCode(value);
+                : visitRepository.findFirstByCodeIgnoreCase(value);
         return visit.map((found) -> found.getId().toString())
                 .orElseThrow(() -> ApiException.notFound("visit_not_found",
                         "No existe una visita con ese ID o código."));

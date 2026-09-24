@@ -188,6 +188,12 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.intacta").value(true));
 
+        // El código se busca sin distinguir mayúsculas.
+        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", codeOf(visit).toLowerCase())
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+
         // Resolver el código es sólo lectura: la cadena completa sigue íntegra.
         mockMvc.perform(get("/api/v1/audit/verify")
                         .header("Authorization", "Bearer " + adminToken()))
