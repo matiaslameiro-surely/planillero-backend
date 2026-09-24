@@ -11,6 +11,7 @@ import ar.com.planillero.forms.FormTemplate;
 import ar.com.planillero.forms.FormTemplateRepository;
 import ar.com.planillero.forms.FormValidationException;
 import ar.com.planillero.forms.dto.FormSubmissionResponse;
+import ar.com.planillero.planning.VisitAccessGuard;
 import ar.com.planillero.sync.dto.SyncBatchRequest;
 import ar.com.planillero.sync.dto.SyncBatchResponse;
 import ar.com.planillero.sync.dto.SyncOperationRequest;
@@ -42,16 +43,18 @@ public class SyncService {
     private final VisitFormRecordRepository visitFormRepository;
     private final FormTemplateRepository templateRepository;
     private final UserRepository userRepository;
+    private final VisitAccessGuard visitAccessGuard;
     private final ObjectMapper objectMapper;
 
     public SyncService(IdempotencyService idempotency, VisitFormService visitFormService,
             VisitFormRecordRepository visitFormRepository, FormTemplateRepository templateRepository,
-            UserRepository userRepository, ObjectMapper objectMapper) {
+            UserRepository userRepository, VisitAccessGuard visitAccessGuard, ObjectMapper objectMapper) {
         this.idempotency = idempotency;
         this.visitFormService = visitFormService;
         this.visitFormRepository = visitFormRepository;
         this.templateRepository = templateRepository;
         this.userRepository = userRepository;
+        this.visitAccessGuard = visitAccessGuard;
         this.objectMapper = objectMapper;
     }
 
@@ -75,7 +78,9 @@ public class SyncService {
 
         try {
             SyncBatchResponse response =
-                    new SyncBatchResponse(request.operations().stream().map(this::apply).toList());
+                    new SyncBatchResponse(request.operations().stream()
+                            .map(operation -> apply(operation, username))
+                            .toList());
             idempotency.complete(idempotencyKey, objectMapper.writeValueAsString(response));
             return response;
         } catch (RuntimeException unexpected) {
@@ -97,7 +102,7 @@ public class SyncService {
      * excepciones de negocio ya traen su código estable y se copian tal cual, así que el cliente
      * distingue «esta visita no existe» de «este formulario no cumple el schema» sin leer el texto.
      */
-    private SyncOperationResult apply(SyncOperationRequest operation) {
+    private SyncOperationResult apply(SyncOperationRequest operation, String username) {
         UUID operationId = operation.clientOperationId();
 
         // El identificador de operación se exige tan aleatorio como la clave de lote, y por el mismo
@@ -106,6 +111,14 @@ public class SyncService {
         if (!SyncController.esUuidV4(operationId)) {
             return SyncOperationResult.failed(operationId, "operation_id_invalid",
                     "El clientOperationId tiene que ser un UUID versión 4.");
+        }
+
+        // El acceso a la visita va antes de la detección de repetidas: una operación sobre una visita
+        // ajena se rechaza aunque su identificador ya exista, y nunca devuelve el formulario de otro.
+        try {
+            visitAccessGuard.requireAccess(operation.visitId(), username);
+        } catch (ApiException rejected) {
+            return SyncOperationResult.failed(operationId, rejected.getCode(), rejected.getMessage());
         }
 
         // Camino rápido del reintento: la operación ya se aplicó en un envío anterior.

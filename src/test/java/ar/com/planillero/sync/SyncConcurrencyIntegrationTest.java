@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.VisitFixtures;
 import ar.com.planillero.common.ApiException;
 import ar.com.planillero.forms.dto.FormSubmissionRequest;
 import ar.com.planillero.sync.dto.SyncBatchRequest;
@@ -60,6 +61,7 @@ class SyncConcurrencyIntegrationTest extends AbstractIntegrationTest {
                     (id, code, address, latitude, longitude, jurisdiction, status, urgency)
                 values (?, ?, 'Calle Ficticia 300', -34.600000, -58.400000, 'ZONA_NORTE', 'PENDING', 'LOW')
                 """, visita, "C-" + visita.toString().substring(0, 8));
+        VisitFixtures.assign(jdbcTemplate, visita, "operador.demo");
     }
 
     @Test

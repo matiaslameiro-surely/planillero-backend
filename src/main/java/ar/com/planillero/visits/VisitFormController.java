@@ -3,6 +3,7 @@ package ar.com.planillero.visits;
 import java.util.UUID;
 
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +20,7 @@ import jakarta.validation.Valid;
  * Carga del formulario tipificado de una visita.
  *
  * <p>Es el endpoint que usa el operario desde el móvil cuando termina de completar la planilla.
+ * Que la visita sea del usuario no se decide acá: lo valida {@link VisitFormService}.
  */
 @RestController
 @RequestMapping("/api/v1/visitas")
@@ -40,8 +42,9 @@ public class VisitFormController {
     @PreAuthorize("hasAnyRole('OPERATOR', 'SUPERVISOR', 'ADMINISTRATOR')")
     public FormSubmissionResponse submitForm(
             @PathVariable("id") UUID id,
-            @Valid @RequestBody FormSubmissionRequest request) {
-        return service.submit(id, request);
+            @Valid @RequestBody FormSubmissionRequest request,
+            Authentication authentication) {
+        return service.submit(id, request, authentication.getName());
     }
 
     /**
@@ -53,7 +56,7 @@ public class VisitFormController {
      */
     @GetMapping("/{id}/formulario")
     @PreAuthorize("hasAnyRole('SUPERVISOR', 'ADMINISTRATOR')")
-    public VisitFormDetailDto getFormDetail(@PathVariable("id") UUID id) {
-        return service.getFormDetail(id);
+    public VisitFormDetailDto getFormDetail(@PathVariable("id") UUID id, Authentication authentication) {
+        return service.getFormDetail(id, authentication.getName());
     }
 }

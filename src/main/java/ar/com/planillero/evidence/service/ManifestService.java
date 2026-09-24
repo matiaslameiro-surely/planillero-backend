@@ -27,9 +27,13 @@ import ar.com.planillero.evidence.model.VisitManifest;
 import ar.com.planillero.evidence.repository.EvidenceRepository;
 import ar.com.planillero.evidence.repository.VisitManifestRepository;
 import ar.com.planillero.evidence.storage.ObjectStorageService;
+import ar.com.planillero.planning.VisitAccessGuard;
 
 /**
  * Servicio para generación, sellado con firma digital HMAC y verificación pericial de manifiestos.
+ *
+ * <p>Cada operación pasa primero por {@link VisitAccessGuard}: el controlador asegura el rol; este
+ * service asegura que la visita sea del usuario.
  */
 @Service
 public class ManifestService {
@@ -38,17 +42,20 @@ public class ManifestService {
     private final EvidenceRepository evidenceRepository;
     private final CryptoService cryptoService;
     private final ObjectStorageService storageService;
+    private final VisitAccessGuard visitAccessGuard;
     private final ObjectMapper objectMapper;
 
     public ManifestService(
             VisitManifestRepository manifestRepository,
             EvidenceRepository evidenceRepository,
             CryptoService cryptoService,
-            ObjectStorageService storageService) {
+            ObjectStorageService storageService,
+            VisitAccessGuard visitAccessGuard) {
         this.manifestRepository = manifestRepository;
         this.evidenceRepository = evidenceRepository;
         this.cryptoService = cryptoService;
         this.storageService = storageService;
+        this.visitAccessGuard = visitAccessGuard;
         this.objectMapper = new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
     }
 
@@ -57,10 +64,12 @@ public class ManifestService {
      */
     @Transactional
     @AuditLog(eventType = "MANIFEST_SIGNED", entityType = "VISIT")
-    public ManifestResponse createAndSignManifest(UUID visitId, UUID userId, CreateManifestRequest request) {
+    public ManifestResponse createAndSignManifest(UUID visitId, UUID userId, CreateManifestRequest request,
+            String username) {
         if (visitId == null) {
             throw new IllegalArgumentException("El identificador de visita es obligatorio");
         }
+        visitAccessGuard.requireAccess(visitId, username);
         if (userId == null) {
             throw new IllegalArgumentException("El identificador de usuario firmante es obligatorio");
         }
@@ -119,7 +128,8 @@ public class ManifestService {
     }
 
     @Transactional(readOnly = true)
-    public ManifestResponse getLatestManifest(UUID visitId) {
+    public ManifestResponse getLatestManifest(UUID visitId, String username) {
+        visitAccessGuard.requireAccess(visitId, username);
         VisitManifest manifest = manifestRepository.findFirstByVisitIdOrderByCreatedAtDesc(visitId)
                 .orElseThrow(() -> new IllegalArgumentException("No existe manifiesto registrado para la visita: " + visitId));
         return ManifestResponse.from(manifest);
@@ -131,7 +141,8 @@ public class ManifestService {
      * 2. Recalcula el digest SHA-256 de cada binario pericial en el storage para verificar no alteración.
      */
     @Transactional
-    public VerificationResultResponse verifyManifest(UUID visitId) {
+    public VerificationResultResponse verifyManifest(UUID visitId, String username) {
+        visitAccessGuard.requireAccess(visitId, username);
         VisitManifest manifest = manifestRepository.findFirstByVisitIdOrderByCreatedAtDesc(visitId)
                 .orElseThrow(() -> new IllegalArgumentException("No existe manifiesto registrado para la visita: " + visitId));
 

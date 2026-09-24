@@ -53,6 +53,19 @@
 
 ---
 
+### Riesgo 5: Acceso Horizontal a Visitas Ajenas
+**Categoría:** Acceso / Control de Acceso (OWASP A01:2021 - Broken Access Control)
+
+**Descripción:** Un usuario autenticado con un rol habilitado podía leer o escribir evidencias, manifiestos y formularios de visitas de otra zona o que no le asignaron. El `@PreAuthorize` sólo controla el rol, y cada endpoint recibe el identificador de la visita del cliente (PLAN-49).
+
+**Medidas Implementadas:**
+- ✅ **Recorte por jurisdicción en planificación** (`PlanningService`): el supervisor sólo lista, consulta y asigna visitas y operadores de su zona (`403 outside_jurisdiction`).
+- ✅ **Inicio de visita sólo por su operador** (`VisitStartService`): la visita tiene que estar en una hoja de ruta propia (`403 visit_not_assigned`).
+- ✅ **Guardia por visita** (`VisitAccessGuard`): evidencias, manifiesto, formulario y sincronización diferida exigen que la visita sea del usuario. El administrador accede a todas, el supervisor a las de su jurisdicción y el operador a las de su hoja de ruta. La guardia corre antes de validar o escribir nada, así que un rechazo no deja binarios en el storage WORM ni filas en la base. En el sync se rechaza sólo la operación afectada, y el control va antes de detectar repetidas.
+- ⚠️ **Existencia observable**: una visita inexistente responde `404` y una ajena, `403`. Los identificadores son UUID v4 y no se pueden enumerar.
+
+---
+
 ## Verificaciones Realizadas
 
 | Verificación | Estado | Evidencia |
@@ -65,6 +78,7 @@
 | Triggers BD append-only activos | ✅ | Migración `V11` aplicada, tests de integración (requieren Docker) |
 | Cadena SHA-256 verificada | ✅ | Endpoint `/api/v1/audit/verify` retorna `ok: true` |
 | HMAC manifiestos verificado | ✅ | Tests `CryptoServiceTest` (3/3 pass) |
+| Acceso horizontal por visita (zona ajena, no asignada, roles legítimos) | ✅ | Tests `VisitAccessIntegrationTest` (requieren Docker) |
 
 ---
 

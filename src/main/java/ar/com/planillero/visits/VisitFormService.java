@@ -21,6 +21,7 @@ import ar.com.planillero.forms.FormTemplateService;
 import ar.com.planillero.forms.dto.FormSubmissionRequest;
 import ar.com.planillero.forms.dto.FormSubmissionResponse;
 import ar.com.planillero.planning.Visit;
+import ar.com.planillero.planning.VisitAccessGuard;
 import ar.com.planillero.planning.VisitRepository;
 import ar.com.planillero.visits.dto.VisitFormDetailDto;
 import tools.jackson.databind.JsonNode;
@@ -37,6 +38,10 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Hay dos puertas de entrada —la carga en línea y la sincronización diferida— y las dos aplican
  * exactamente las mismas reglas. Lo único que cambia es la transacción y lo que se deja asentado
  * sobre el origen del dato.
+ *
+ * <p>El acceso a la visita ({@link VisitAccessGuard}) también se exige en las dos: la carga en línea
+ * lo valida acá y la diferida, en {@link ar.com.planillero.sync.SyncService}, que es su único
+ * llamador y lo tiene que hacer antes de detectar operaciones repetidas.
  */
 @Service
 public class VisitFormService {
@@ -49,6 +54,7 @@ public class VisitFormService {
     private final ObjectMapper objectMapper;
     private final AuditChainService auditChainService;
     private final AuditRequestContext auditRequestContext;
+    private final VisitAccessGuard visitAccessGuard;
 
     public VisitFormService(
             VisitFormRecordRepository visitRecordRepository,
@@ -58,7 +64,8 @@ public class VisitFormService {
             FormSchemaValidator validator,
             ObjectMapper objectMapper,
             AuditChainService auditChainService,
-            AuditRequestContext auditRequestContext) {
+            AuditRequestContext auditRequestContext,
+            VisitAccessGuard visitAccessGuard) {
         this.visitRecordRepository = visitRecordRepository;
         this.planningVisitRepository = planningVisitRepository;
         this.templateService = templateService;
@@ -67,18 +74,21 @@ public class VisitFormService {
         this.objectMapper = objectMapper;
         this.auditChainService = auditChainService;
         this.auditRequestContext = auditRequestContext;
+        this.visitAccessGuard = visitAccessGuard;
     }
 
     /**
      * Valida el formulario contra su plantilla y, si cumple, lo guarda.
      *
      * @throws ApiException                  {@code 404} si la visita no existe,
+     *                                       {@code 403} si el usuario no tiene acceso a la visita,
      *                                       {@code 400 template_not_found} si la plantilla no existe
      * @throws ar.com.planillero.forms.FormValidationException si el payload no cumple el schema
      */
     @Transactional
     @AuditLog(eventType = "FORM_SUBMITTED", entityType = "VISIT")
-    public FormSubmissionResponse submit(UUID visitId, FormSubmissionRequest request) {
+    public FormSubmissionResponse submit(UUID visitId, FormSubmissionRequest request, String username) {
+        visitAccessGuard.requireAccess(visitId, username);
         return applyOnline(visitId, request).form();
     }
 
@@ -103,6 +113,9 @@ public class VisitFormService {
      * transacción</strong> si la operación ya se aplicó. Comprobar antes, por fuera, no sirve de
      * nada: entre la consulta y la escritura entran los demás hilos, y como el formulario se guarda
      * con un {@code update} sobre una fila que ya existe, todos escribirían sin violar ningún índice.
+     *
+     * <p>No valida el acceso a la visita: lo hace {@link ar.com.planillero.sync.SyncService} antes de
+     * llamar.
      *
      * @param syncOperationId identificador de la operación en el dispositivo; queda guardado y es
      *                        único, así que un reintento no puede duplicar el formulario
@@ -211,13 +224,12 @@ public class VisitFormService {
      * Devuelve la visita con su formulario cargado, para el visor del expediente digital.
      *
      * <p>Reino de solo lectura: no valida nada ni muta estado. Una visita sin formulario devuelve los
-     * campos de formulario en {@code null}; si la visita no existe, {@code 404 visit_not_found}.
+     * campos de formulario en {@code null}; si la visita no existe, {@code 404 visit_not_found}, y si
+     * es de otra jurisdicción, {@code 403 outside_jurisdiction}.
      */
     @Transactional(readOnly = true)
-    public VisitFormDetailDto getFormDetail(UUID visitId) {
-        Visit visit = planningVisitRepository.findById(visitId)
-                .orElseThrow(() -> ApiException.notFound(
-                        "visit_not_found", "No existe la visita indicada."));
+    public VisitFormDetailDto getFormDetail(UUID visitId, String username) {
+        Visit visit = visitAccessGuard.requireAccess(visitId, username);
         VisitFormRecord record = visitRecordRepository.findById(visitId)
                 .orElseThrow(() -> ApiException.notFound(
                         "visit_not_found", "No existe la visita indicada."));

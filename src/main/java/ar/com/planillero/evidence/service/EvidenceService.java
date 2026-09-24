@@ -22,21 +22,28 @@ import ar.com.planillero.evidence.model.Evidence;
 import ar.com.planillero.evidence.model.EvidenceType;
 import ar.com.planillero.evidence.repository.EvidenceRepository;
 import ar.com.planillero.evidence.storage.ObjectStorageService;
+import ar.com.planillero.planning.VisitAccessGuard;
 
 /**
  * Servicio de negocio para ingesta y gestión de evidencias periciales con cálculo SHA-256 en streaming.
+ *
+ * <p>Cada operación pasa primero por {@link VisitAccessGuard}: el controlador asegura el rol; este
+ * service asegura que la visita sea del usuario.
  */
 @Service
 public class EvidenceService {
 
     private final EvidenceRepository evidenceRepository;
     private final ObjectStorageService storageService;
+    private final VisitAccessGuard visitAccessGuard;
 
     public EvidenceService(
             EvidenceRepository evidenceRepository,
-            ObjectStorageService storageService) {
+            ObjectStorageService storageService,
+            VisitAccessGuard visitAccessGuard) {
         this.evidenceRepository = evidenceRepository;
         this.storageService = storageService;
+        this.visitAccessGuard = visitAccessGuard;
     }
 
     /**
@@ -50,7 +57,11 @@ public class EvidenceService {
             EvidenceType evidenceType,
             Instant capturedAt,
             String clientDeclaredHash,
-            String metadata) {
+            String metadata,
+            String username) {
+
+        // Antes que nada: un rechazo no puede dejar un binario en el storage WORM.
+        visitAccessGuard.requireAccess(visitId, username);
 
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("El archivo de evidencia no puede ser nulo ni estar vacío");
@@ -118,22 +129,23 @@ public class EvidenceService {
     }
 
     @Transactional(readOnly = true)
-    public List<EvidenceResponse> getEvidencesByVisit(UUID visitId) {
+    public List<EvidenceResponse> getEvidencesByVisit(UUID visitId, String username) {
+        visitAccessGuard.requireAccess(visitId, username);
         return evidenceRepository.findByVisitIdOrderByCapturedAtAsc(visitId).stream()
                 .map(EvidenceResponse::from)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public Evidence getEvidenceEntity(UUID visitId, UUID evidenceId) {
+    public Evidence getEvidenceEntity(UUID visitId, UUID evidenceId, String username) {
+        visitAccessGuard.requireAccess(visitId, username);
         return evidenceRepository.findByIdAndVisitId(evidenceId, visitId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Evidencia no encontrada para la visita indicada: " + evidenceId));
     }
 
-    @Transactional(readOnly = true)
-    public Resource loadEvidenceResource(UUID visitId, UUID evidenceId) {
-        Evidence evidence = getEvidenceEntity(visitId, evidenceId);
+    /** Abre el binario de una evidencia que ya pasó por {@link #getEvidenceEntity}. */
+    public Resource loadEvidenceResource(Evidence evidence) {
         InputStream stream = storageService.load(evidence.getStoragePath());
         return new InputStreamResource(stream);
     }

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -31,6 +32,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.VisitFixtures;
 import ar.com.planillero.evidence.crypto.CryptoService;
 import ar.com.planillero.evidence.dto.CreateManifestRequest;
 import ar.com.planillero.evidence.model.Evidence;
@@ -58,6 +60,9 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private EvidenceRepository evidenceRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private String tokenOperador;
@@ -78,7 +83,7 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("Subida multipart de foto con cálculo automático de SHA-256 en streaming")
     void uploadEvidenceSuccess() throws Exception {
-        UUID visitId = UUID.randomUUID();
+        UUID visitId = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", "operador.demo");
         byte[] content = "fotografia pericial de fachada".getBytes(StandardCharsets.UTF_8);
         String expectedHash = cryptoService.calculateSha256(content);
 
@@ -103,7 +108,7 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("Rechazo con 400 cuando el hash declarado en X-Content-SHA256 difiere del contenido real")
     void uploadEvidenceIntegrityMismatch() throws Exception {
-        UUID visitId = UUID.randomUUID();
+        UUID visitId = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", "operador.demo");
         byte[] content = "imagen legitima".getBytes(StandardCharsets.UTF_8);
 
         MockMultipartFile file = new MockMultipartFile(
@@ -124,7 +129,7 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("Ciclo completo de sellado pericial y verificación criptográfica (VERIFIED vs TAMPERED)")
     void manifestLifecycleAndTamperDetection() throws Exception {
-        UUID visitId = UUID.randomUUID();
+        UUID visitId = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", "operador.demo");
 
         // 1. Subir foto
         byte[] photoBytes = "foto del entorno pericial".getBytes(StandardCharsets.UTF_8);

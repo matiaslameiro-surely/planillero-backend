@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.VisitFixtures;
 import ar.com.planillero.audit.AuditChainService;
 import com.jayway.jsonpath.JsonPath;
 
@@ -54,6 +55,7 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
                     (id, code, address, latitude, longitude, jurisdiction, status, urgency)
                 values (?, ?, 'Calle Ficticia 200', -34.600000, -58.400000, 'ZONA_NORTE', 'PENDING', 'LOW')
                 """, visita, "S-" + visita.toString().substring(0, 8));
+        VisitFixtures.assign(jdbcTemplate, visita, "operador.demo");
     }
 
     @Test
@@ -322,6 +324,7 @@ class SyncBatchIntegrationTest extends AbstractIntegrationTest {
                     (id, code, address, latitude, longitude, jurisdiction, status, urgency)
                 values (?, ?, 'Calle Ficticia 300', -34.600000, -58.400000, 'ZONA_NORTE', 'PENDING', 'LOW')
                 """, id, code);
+        VisitFixtures.assign(jdbcTemplate, id, "operador.demo");
         return id;
     }
 
