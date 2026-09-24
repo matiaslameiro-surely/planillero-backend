@@ -114,7 +114,8 @@ public class SyncService {
         }
 
         // El acceso a la visita va antes de la detección de repetidas: una operación sobre una visita
-        // ajena se rechaza aunque su identificador ya exista, y nunca devuelve el formulario de otro.
+        // ajena se rechaza aunque su identificador ya se haya aplicado. Una operación sobre una visita
+        // propia que reusa el identificador de otra visita sigue volviendo DUPLICATE, como define PLAN-14.
         try {
             visitAccessGuard.requireAccess(operation.visitId(), username);
         } catch (ApiException rejected) {

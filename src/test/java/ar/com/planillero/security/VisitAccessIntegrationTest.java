@@ -219,6 +219,18 @@ class VisitAccessIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("sync: el administrador carga formularios de cualquier zona")
+    void syncAdministradorEnCualquierZona() throws Exception {
+        UUID visitaSur = VisitFixtures.createVisit(jdbcTemplate, "ZONA_SUR");
+
+        sync("{\"operations\": [" + operacion(UUID.randomUUID(), visitaSur) + "]}", "admin.demo", "Admin123!")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results[0].status").value("APPLIED"));
+
+        assertThat(formularioGuardado(visitaSur)).isTrue();
+    }
+
+    @Test
     @DisplayName("sync: repetir la operación de otro operador no la devuelve como DUPLICATE")
     void syncNoDevuelveLaOperacionDeOtroOperador() throws Exception {
         UUID visita = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", OPERADOR);
@@ -242,7 +254,7 @@ class VisitAccessIntegrationTest extends AbstractIntegrationTest {
 
     // ------------------------------------------------------------------ helpers
 
-    /** Sube dos evidencias, sella el manifiesto, lo consulta y lo verifica, y carga el formulario. */
+    /** Sube una evidencia, sella el manifiesto, lo consulta y lo verifica, y carga el formulario. */
     private void fullCycle(UUID visita, String username, String password) throws Exception {
         UUID evidencia = upload(visita, username, password);
 
