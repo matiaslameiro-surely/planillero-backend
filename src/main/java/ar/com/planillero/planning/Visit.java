@@ -165,6 +165,22 @@ public class Visit {
         this.status = VisitStatus.IN_PROGRESS;
     }
 
+    /**
+     * Finaliza la visita: transiciona el estado de {@code IN_PROGRESS} a {@code COMPLETED}.
+     *
+     * @throws IllegalStateException si la visita no está en estado {@code IN_PROGRESS}
+     */
+    public void complete() {
+        if (status == VisitStatus.COMPLETED) {
+            throw new IllegalStateException("La visita ya está completada.");
+        }
+        if (status != VisitStatus.IN_PROGRESS) {
+            throw new IllegalStateException(
+                    "Sólo se puede completar una visita IN_PROGRESS y ésta está " + status + ".");
+        }
+        this.status = VisitStatus.COMPLETED;
+    }
+
     public BigDecimal getStartLatitude() {
         return startLatitude;
     }
