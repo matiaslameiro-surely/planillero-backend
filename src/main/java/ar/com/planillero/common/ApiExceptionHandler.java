@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * Convierte las excepciones de negocio en un cuerpo JSON consistente.
@@ -64,6 +65,17 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "error", "worm_policy_violation",
                 "message", ex.getMessage()));
+    }
+
+    /**
+     * Un parámetro que no se puede convertir al tipo esperado (por ejemplo, un UUID mal formado). El
+     * mensaje de la excepción es técnico y en inglés: se responde uno propio (PLAN-46).
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, String>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", "invalid_parameter",
+                "message", "El parámetro «" + ex.getName() + "» tiene un formato inválido."));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

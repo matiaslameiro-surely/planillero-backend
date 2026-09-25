@@ -2,6 +2,11 @@ package ar.com.planillero.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyIterable;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,11 +21,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.jayway.jsonpath.JsonPath;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.planning.VisitRepository;
 
 /**
  * Pruebas de integración de la auditoría: encadenamiento de hashes, inmutabilidad de la tabla y
@@ -39,6 +46,10 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    /** Espía para contar cuántas consultas hace la bitácora para resolver los códigos de visita. */
+    @MockitoSpyBean
+    private VisitRepository visitRepository;
 
     @Test
     void startingAVisitWritesAChainedAuditRowThatVerifiesOk() throws Exception {
@@ -157,6 +168,78 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
         java.util.List<String> entityIds = JsonPath.read(json, "$.content[*].entityId");
         assertThat(eventTypes).allMatch("VISIT_STARTED"::equals);
         assertThat(entityIds).contains(visit.toString());
+    }
+
+    // --- PLAN-46: identificar las visitas por su código ---
+
+    @Test
+    void logsResolveTheVisitCodesOfAPageWithASingleQuery() throws Exception {
+        UUID first = newVisit();
+        UUID second = newVisit();
+        UUID third = newVisit();
+        assign(OPERADOR_DEMO, LocalDate.of(2026, 11, 15), first, second, third);
+        String token = adminToken();
+        clearInvocations(visitRepository);
+
+        String json = mockMvc.perform(get("/api/v1/audit/logs").param("eventType", "VISIT_ASSIGNED")
+                        .param("size", "100")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        for (UUID visit : new UUID[] {first, second, third}) {
+            java.util.List<String> codes = JsonPath.read(json,
+                    "$.content[?(@.entityId == '" + visit + "')].entityCode");
+            assertThat(codes).containsExactly(codeOf(visit));
+        }
+        // Una sola consulta por página, no una por fila: resolverlo fila por fila rompe esto.
+        verify(visitRepository, times(1)).findAllById(anyIterable());
+        verifyNoMoreInteractions(visitRepository);
+    }
+
+    @Test
+    void verifyAcceptsTheVisitCodeAndTheChainStaysIntact() throws Exception {
+        UUID visit = newVisit();
+        assign(OPERADOR_DEMO, LocalDate.of(2026, 11, 16), visit);
+
+        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", codeOf(visit))
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+
+        // El código se busca sin distinguir mayúsculas.
+        mockMvc.perform(get("/api/v1/audit/verify").param("visitId", codeOf(visit).toLowerCase())
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+
+        // Resolver el código es sólo lectura: la cadena completa sigue íntegra.
+        mockMvc.perform(get("/api/v1/audit/verify")
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intacta").value(true));
+    }
+
+    @Test
+    void verifyWithAnUnknownIdOrCodeAnswers404InSpanish() throws Exception {
+        for (String unknown : new String[] {"66", "V-9999", UUID.randomUUID().toString()}) {
+            mockMvc.perform(get("/api/v1/audit/verify").param("visitId", unknown)
+                            .header("Authorization", "Bearer " + adminToken()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.message").value("No existe una visita con ese ID o código."));
+        }
+    }
+
+    @Test
+    void aMalformedUuidParameterAnswers400InSpanish() throws Exception {
+        mockMvc.perform(get("/api/v1/visitas/{id}/formulario", "no-es-un-uuid")
+                        .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("El parámetro «id» tiene un formato inválido."));
+    }
+
+    private String codeOf(UUID visit) {
+        return jdbc.queryForObject("select code from visits.visits where id = ?", String.class, visit);
     }
 
     private UUID newVisit() {

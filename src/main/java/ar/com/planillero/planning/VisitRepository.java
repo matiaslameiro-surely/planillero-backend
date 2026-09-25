@@ -16,6 +16,13 @@ public interface VisitRepository extends JpaRepository<Visit, UUID> {
     List<Visit> findByJurisdictionOrderByCodeAsc(String jurisdiction);
 
     /**
+     * Lo usa la auditoría para verificar por código. Sin distinguir mayúsculas, porque el usuario puede
+     * escribir {@code v-1001}; {@code First} evita un error si algún día hubiera dos códigos que sólo
+     * difieren en mayúsculas ({@code visits.code unique} sí las distingue).
+     */
+    Optional<Visit> findFirstByCodeIgnoreCase(String code);
+
+    /**
      * Lee la visita bloqueando su fila hasta el fin de la transacción.
      *
      * <p>Sirve para iniciar una visita: si dos pedidos llegan a la vez, el segundo espera, ve la visita
