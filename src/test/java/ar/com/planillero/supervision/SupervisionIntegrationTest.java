@@ -2,6 +2,8 @@ package ar.com.planillero.supervision;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.startsWith;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,14 +11,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.user.UserRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 /**
  * Pruebas de integración del Tablero Central de Supervisión y telemetría de operadores.
@@ -26,6 +31,12 @@ class SupervisionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private OperatorShiftRepository operatorShiftRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Test
     @DisplayName("los endpoints de supervisión exigen token: 401 sin autenticación")
@@ -113,6 +124,43 @@ class SupervisionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("POST /heartbeat con networkStatus fuera de ONLINE, OFFLINE o UNKNOWN: 400 sin tocar el turno")
+    void latidoConNetworkStatusInvalidoResponde400() throws Exception {
+        String token = operatorToken();
+        sendHeartbeat(token, "{\"networkStatus\":\"OFFLINE\"}").andExpect(status().isOk());
+        OperatorShift before = todayShift();
+
+        for (String invalid : new String[] {"WIFI", "online", ""}) {
+            sendHeartbeat(token, "{\"batteryLevel\":0.8,\"networkStatus\":\"" + invalid + "\"}")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("invalid_request"))
+                    .andExpect(jsonPath("$.message").value(startsWith("networkStatus:")));
+        }
+
+        // El pedido se rechaza antes del servicio: ni el estado de red ni el último latido cambian.
+        OperatorShift after = todayShift();
+        assertEquals("OFFLINE", after.getNetworkStatus());
+        assertEquals(before.getLastHeartbeatAt(), after.getLastHeartbeatAt());
+    }
+
+    @Test
+    @DisplayName("POST /heartbeat guarda ONLINE, OFFLINE y UNKNOWN; sin networkStatus conserva el valor anterior")
+    void latidoGuardaNetworkStatusValidos() throws Exception {
+        String token = operatorToken();
+
+        for (String valid : new String[] {"ONLINE", "OFFLINE", "UNKNOWN"}) {
+            sendHeartbeat(token, "{\"networkStatus\":\"" + valid + "\"}").andExpect(status().isOk());
+            assertEquals(valid, todayShift().getNetworkStatus());
+        }
+
+        sendHeartbeat(token, "{\"networkStatus\":\"OFFLINE\"}").andExpect(status().isOk());
+        sendHeartbeat(token, "{\"batteryLevel\":0.6}").andExpect(status().isOk());
+        assertEquals("OFFLINE", todayShift().getNetworkStatus());
+        sendHeartbeat(token, "{\"networkStatus\":null}").andExpect(status().isOk());
+        assertEquals("OFFLINE", todayShift().getNetworkStatus());
+    }
+
+    @Test
     @DisplayName("Prueba de carga y rendimiento de endpoints analíticos de supervisión")
     void pruebaDeCargaEndpointsSupervision() throws Exception {
         String token = supervisorToken();
@@ -131,6 +179,20 @@ class SupervisionIntegrationTest extends AbstractIntegrationTest {
         // 30 peticiones analíticas deben responder holgadamente en menos de 5 segundos
         org.junit.jupiter.api.Assertions.assertTrue(duration < 5000,
                 "Los endpoints analíticos tardaron " + duration + "ms, superando el umbral de performance");
+    }
+
+    private ResultActions sendHeartbeat(String token, String payload)
+            throws Exception {
+        return mockMvc.perform(post("/api/v1/supervision/heartbeat")
+                .header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON)
+                .content(payload));
+    }
+
+    /** El turno de hoy de {@code operador.demo}, leído de la base. */
+    private OperatorShift todayShift() {
+        UUID operatorId = userRepository.findByUsername("operador.demo").orElseThrow().getId();
+        return operatorShiftRepository.findByOperatorIdAndShiftDate(operatorId, LocalDate.now()).orElseThrow();
     }
 
     private String supervisorToken() throws Exception {
