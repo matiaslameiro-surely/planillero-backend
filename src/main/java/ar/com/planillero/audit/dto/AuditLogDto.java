@@ -24,10 +24,6 @@ public record AuditLogDto(
         Instant createdAt,
         String entityCode) {
 
-    public static AuditLogDto from(AuditLogEntry entry) {
-        return from(entry, null);
-    }
-
     public static AuditLogDto from(AuditLogEntry entry, String entityCode) {
         return new AuditLogDto(entry.getId(), entry.getEventType(), entry.getEntityType(), entry.getEntityId(),
                 entry.getUsername(), entry.getIp(), entry.getDeviceId(), entry.getPayload(), entry.getCreatedAt(),

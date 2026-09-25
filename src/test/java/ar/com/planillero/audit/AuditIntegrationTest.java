@@ -2,6 +2,11 @@ package ar.com.planillero.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyIterable;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,11 +21,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.jayway.jsonpath.JsonPath;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.planning.VisitRepository;
 
 /**
  * Pruebas de integración de la auditoría: encadenamiento de hashes, inmutabilidad de la tabla y
@@ -39,6 +46,10 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    /** Espía para contar cuántas consultas hace la bitácora para resolver los códigos de visita. */
+    @MockitoSpyBean
+    private VisitRepository visitRepository;
 
     @Test
     void startingAVisitWritesAChainedAuditRowThatVerifiesOk() throws Exception {
@@ -162,20 +173,28 @@ class AuditIntegrationTest extends AbstractIntegrationTest {
     // --- PLAN-46: identificar las visitas por su código ---
 
     @Test
-    void logsIncludeTheVisitCodeForVisitRows() throws Exception {
-        UUID visit = newVisit();
-        String code = codeOf(visit);
-        assign(OPERADOR_DEMO, LocalDate.of(2026, 11, 15), visit);
+    void logsResolveTheVisitCodesOfAPageWithASingleQuery() throws Exception {
+        UUID first = newVisit();
+        UUID second = newVisit();
+        UUID third = newVisit();
+        assign(OPERADOR_DEMO, LocalDate.of(2026, 11, 15), first, second, third);
+        String token = adminToken();
+        clearInvocations(visitRepository);
 
         String json = mockMvc.perform(get("/api/v1/audit/logs").param("eventType", "VISIT_ASSIGNED")
                         .param("size", "100")
-                        .header("Authorization", "Bearer " + adminToken()))
+                        .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        java.util.List<String> codes = JsonPath.read(json,
-                "$.content[?(@.entityId == '" + visit + "')].entityCode");
-        assertThat(codes).containsExactly(code);
+        for (UUID visit : new UUID[] {first, second, third}) {
+            java.util.List<String> codes = JsonPath.read(json,
+                    "$.content[?(@.entityId == '" + visit + "')].entityCode");
+            assertThat(codes).containsExactly(codeOf(visit));
+        }
+        // Una sola consulta por página, no una por fila: resolverlo fila por fila rompe esto.
+        verify(visitRepository, times(1)).findAllById(anyIterable());
+        verifyNoMoreInteractions(visitRepository);
     }
 
     @Test
