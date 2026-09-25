@@ -19,6 +19,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.VisitFixtures;
 import ar.com.planillero.sync.dto.SyncBatchRequest;
 import com.jayway.jsonpath.JsonPath;
 import tools.jackson.databind.ObjectMapper;
@@ -60,6 +61,7 @@ class SyncAbandonedKeyIntegrationTest extends AbstractIntegrationTest {
                     (id, code, address, latitude, longitude, jurisdiction, status, urgency)
                 values (?, ?, 'Calle Ficticia 400', -34.600000, -58.400000, 'ZONA_NORTE', 'PENDING', 'LOW')
                 """, visita, "A-" + visita.toString().substring(0, 8));
+        VisitFixtures.assign(jdbcTemplate, visita, "operador.demo");
     }
 
     @Test

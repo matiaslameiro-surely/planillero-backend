@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import ar.com.planillero.AbstractIntegrationTest;
+import ar.com.planillero.VisitFixtures;
 import com.jayway.jsonpath.JsonPath;
 
 /**
@@ -47,7 +48,10 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    /** Visitas ficticias propias, con las columnas obligatorias de la tabla de PLAN-8. */
+    /**
+     * Visitas ficticias propias, con las columnas obligatorias de la tabla de PLAN-8. Van a la hoja de
+     * ruta de {@code operador.demo}, que es quien carga los formularios.
+     */
     @BeforeEach
     void crearVisitas() {
         crearVisita(VISITA_VALIDA, "F-0001");
@@ -63,6 +67,7 @@ class VisitFormIntegrationTest extends AbstractIntegrationTest {
                 values (?, ?, 'Calle Ficticia 100', -34.600000, -58.400000, 'ZONA_NORTE', 'PENDING', 'LOW')
                 on conflict (id) do nothing
                 """, id, code);
+        VisitFixtures.assign(jdbcTemplate, id, "operador.demo");
     }
 
     @Test

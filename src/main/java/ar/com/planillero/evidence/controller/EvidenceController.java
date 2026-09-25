@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -65,10 +66,11 @@ public class EvidenceController {
             @RequestParam(value = "type", required = false, defaultValue = "PHOTO") EvidenceType type,
             @RequestParam(value = "capturedAt", required = false) Instant capturedAt,
             @RequestParam(value = "metadata", required = false) String metadata,
-            @RequestHeader(value = "X-Content-SHA256", required = false) String clientHash) {
+            @RequestHeader(value = "X-Content-SHA256", required = false) String clientHash,
+            Authentication authentication) {
 
         EvidenceResponse response = evidenceService.saveEvidence(
-                visitId, file, type, capturedAt, clientHash, metadata);
+                visitId, file, type, capturedAt, clientHash, metadata, authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -77,8 +79,10 @@ public class EvidenceController {
      */
     @GetMapping("/evidences")
     @PreAuthorize("hasAnyRole('OPERATOR', 'SUPERVISOR', 'ADMINISTRATOR')")
-    public ResponseEntity<List<EvidenceResponse>> getEvidences(@PathVariable UUID visitId) {
-        return ResponseEntity.ok(evidenceService.getEvidencesByVisit(visitId));
+    public ResponseEntity<List<EvidenceResponse>> getEvidences(
+            @PathVariable UUID visitId,
+            Authentication authentication) {
+        return ResponseEntity.ok(evidenceService.getEvidencesByVisit(visitId, authentication.getName()));
     }
 
     /**
@@ -88,10 +92,11 @@ public class EvidenceController {
     @PreAuthorize("hasAnyRole('OPERATOR', 'SUPERVISOR', 'ADMINISTRATOR')")
     public ResponseEntity<Resource> getEvidenceFile(
             @PathVariable UUID visitId,
-            @PathVariable UUID evidenceId) {
+            @PathVariable UUID evidenceId,
+            Authentication authentication) {
 
-        Evidence evidence = evidenceService.getEvidenceEntity(visitId, evidenceId);
-        Resource resource = evidenceService.loadEvidenceResource(visitId, evidenceId);
+        Evidence evidence = evidenceService.getEvidenceEntity(visitId, evidenceId, authentication.getName());
+        Resource resource = evidenceService.loadEvidenceResource(evidence);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(evidence.getContentType()))
@@ -109,10 +114,12 @@ public class EvidenceController {
     public ResponseEntity<ManifestResponse> createManifest(
             @PathVariable UUID visitId,
             @Valid @RequestBody CreateManifestRequest request,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         UUID userId = resolveUserId(jwt);
-        ManifestResponse response = manifestService.createAndSignManifest(visitId, userId, request);
+        ManifestResponse response = manifestService.createAndSignManifest(
+                visitId, userId, request, authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -121,8 +128,10 @@ public class EvidenceController {
      */
     @GetMapping("/manifest")
     @PreAuthorize("hasAnyRole('OPERATOR', 'SUPERVISOR', 'ADMINISTRATOR')")
-    public ResponseEntity<ManifestResponse> getManifest(@PathVariable UUID visitId) {
-        return ResponseEntity.ok(manifestService.getLatestManifest(visitId));
+    public ResponseEntity<ManifestResponse> getManifest(
+            @PathVariable UUID visitId,
+            Authentication authentication) {
+        return ResponseEntity.ok(manifestService.getLatestManifest(visitId, authentication.getName()));
     }
 
     /**
@@ -130,8 +139,10 @@ public class EvidenceController {
      */
     @PostMapping("/manifest/verify")
     @PreAuthorize("hasAnyRole('OPERATOR', 'SUPERVISOR', 'ADMINISTRATOR')")
-    public ResponseEntity<VerificationResultResponse> verifyManifest(@PathVariable UUID visitId) {
-        return ResponseEntity.ok(manifestService.verifyManifest(visitId));
+    public ResponseEntity<VerificationResultResponse> verifyManifest(
+            @PathVariable UUID visitId,
+            Authentication authentication) {
+        return ResponseEntity.ok(manifestService.verifyManifest(visitId, authentication.getName()));
     }
 
     private UUID resolveUserId(Jwt jwt) {
