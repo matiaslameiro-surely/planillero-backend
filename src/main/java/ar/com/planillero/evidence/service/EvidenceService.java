@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import ar.com.planillero.audit.AuditLog;
+import ar.com.planillero.common.ApiException;
 import ar.com.planillero.evidence.dto.EvidenceResponse;
 import ar.com.planillero.evidence.model.Evidence;
 import ar.com.planillero.evidence.model.EvidenceType;
@@ -140,8 +141,8 @@ public class EvidenceService {
     public Evidence getEvidenceEntity(UUID visitId, UUID evidenceId, String username) {
         visitAccessGuard.requireAccess(visitId, username);
         return evidenceRepository.findByIdAndVisitId(evidenceId, visitId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Evidencia no encontrada para la visita indicada: " + evidenceId));
+                .orElseThrow(() -> ApiException.notFound(
+                        "evidence_not_found", "Evidencia no encontrada para la visita indicada: " + evidenceId));
     }
 
     /** Abre el binario de una evidencia que ya pasó por {@link #getEvidenceEntity}. */

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
 import ar.com.planillero.audit.AuditLog;
+import ar.com.planillero.common.ApiException;
 import ar.com.planillero.evidence.crypto.CryptoService;
 import ar.com.planillero.evidence.dto.CreateManifestRequest;
 import ar.com.planillero.evidence.dto.ManifestResponse;
@@ -80,8 +81,8 @@ public class ManifestService {
         List<Evidence> evidences = new ArrayList<>();
         for (UUID evidenceId : request.evidenceIds()) {
             Evidence ev = evidenceRepository.findByIdAndVisitId(evidenceId, visitId)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "La evidencia con ID " + evidenceId + " no pertenece a la visita " + visitId));
+                    .orElseThrow(() -> ApiException.notFound(
+                            "evidence_not_found", "La evidencia con ID " + evidenceId + " no pertenece a la visita " + visitId));
             evidences.add(ev);
         }
 
@@ -131,7 +132,7 @@ public class ManifestService {
     public ManifestResponse getLatestManifest(UUID visitId, String username) {
         visitAccessGuard.requireAccess(visitId, username);
         VisitManifest manifest = manifestRepository.findFirstByVisitIdOrderByCreatedAtDesc(visitId)
-                .orElseThrow(() -> new IllegalArgumentException("No existe manifiesto registrado para la visita: " + visitId));
+                .orElseThrow(() -> ApiException.notFound("manifest_not_found", "No existe manifiesto registrado para la visita: " + visitId));
         return ManifestResponse.from(manifest);
     }
 
@@ -144,7 +145,7 @@ public class ManifestService {
     public VerificationResultResponse verifyManifest(UUID visitId, String username) {
         visitAccessGuard.requireAccess(visitId, username);
         VisitManifest manifest = manifestRepository.findFirstByVisitIdOrderByCreatedAtDesc(visitId)
-                .orElseThrow(() -> new IllegalArgumentException("No existe manifiesto registrado para la visita: " + visitId));
+                .orElseThrow(() -> ApiException.notFound("manifest_not_found", "No existe manifiesto registrado para la visita: " + visitId));
 
         boolean signatureValid;
         boolean allEvidencesIntact = true;

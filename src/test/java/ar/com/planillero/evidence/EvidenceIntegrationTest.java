@@ -1,6 +1,7 @@
 package ar.com.planillero.evidence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -103,6 +104,139 @@ class EvidenceIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.evidenceType").value("PHOTO"))
                 .andExpect(jsonPath("$.sha256Hash").value(expectedHash))
                 .andExpect(jsonPath("$.fileSize").value(content.length));
+    }
+
+    @Test
+    @DisplayName("Subida de evidencia a visita inexistente devuelve 404 visit_not_found y no guarda en storage")
+    void uploadEvidenceNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+        byte[] content = "fotografia de visita fantasma".getBytes(StandardCharsets.UTF_8);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "fantasma.jpg",
+                "image/jpeg",
+                content);
+
+        mockMvc.perform(multipart("/api/v1/visits/{visitId}/evidences", nonExistentVisitId)
+                        .file(file)
+                        .param("type", "PHOTO")
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"))
+                .andExpect(jsonPath("$.message").value("No existe la visita indicada."));
+
+        // Verificar que no se creó ningún archivo en la carpeta de la visita inexistente
+        File visitDir = new File(storageProperties.getLocalDir(), "visits/" + nonExistentVisitId);
+        assertFalse(visitDir.exists(), "No debe crearse ningún directorio ni archivo en storage para una visita inexistente");
+    }
+
+    @Test
+    @DisplayName("Listado de evidencias de visita inexistente devuelve 404 visit_not_found")
+    void getEvidencesNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/evidences", nonExistentVisitId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Descarga de archivo con evidencia inexistente devuelve 404 evidence_not_found")
+    void getEvidenceFileNonExistentEvidenceReturns404() throws Exception {
+        UUID visitId = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", "operador.demo");
+        UUID nonExistentEvidenceId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/evidences/{evidenceId}/file", visitId, nonExistentEvidenceId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("evidence_not_found"));
+    }
+
+    @Test
+    @DisplayName("Descarga de archivo con visita inexistente devuelve 404 visit_not_found")
+    void getEvidenceFileNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+        UUID nonExistentEvidenceId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/evidences/{evidenceId}/file", nonExistentVisitId, nonExistentEvidenceId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Consultar manifiesto de visita inexistente devuelve 404 visit_not_found")
+    void getManifestNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/manifest", nonExistentVisitId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Consultar manifiesto de visita sin manifiesto devuelve 404 manifest_not_found")
+    void getManifestWithoutManifestReturns404() throws Exception {
+        UUID visitWithoutManifest = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", "operador.demo");
+
+        mockMvc.perform(get("/api/v1/visits/{visitId}/manifest", visitWithoutManifest)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("manifest_not_found"));
+    }
+
+    @Test
+    @DisplayName("Verificar manifiesto de visita inexistente devuelve 404 visit_not_found")
+    void verifyManifestNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest/verify", nonExistentVisitId)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Verificar manifiesto de visita sin manifiesto devuelve 404 manifest_not_found")
+    void verifyManifestWithoutManifestReturns404() throws Exception {
+        UUID visitWithoutManifest = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", "operador.demo");
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest/verify", visitWithoutManifest)
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("manifest_not_found"));
+    }
+
+    @Test
+    @DisplayName("Crear manifiesto para visita inexistente devuelve 404 visit_not_found")
+    void createManifestNonExistentVisitReturns404() throws Exception {
+        UUID nonExistentVisitId = UUID.randomUUID();
+        CreateManifestRequest request = new CreateManifestRequest("Dispositivo", List.of(UUID.randomUUID()));
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest", nonExistentVisitId)
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("visit_not_found"));
+    }
+
+    @Test
+    @DisplayName("Crear manifiesto con evidencia inexistente devuelve 404 evidence_not_found")
+    void createManifestNonExistentEvidenceReturns404() throws Exception {
+        CreateManifestRequest request = new CreateManifestRequest("Dispositivo", List.of(UUID.randomUUID()));
+
+        UUID visitId = VisitFixtures.createAssignedVisit(jdbcTemplate, "ZONA_NORTE", "operador.demo");
+
+        mockMvc.perform(post("/api/v1/visits/{visitId}/manifest", visitId)
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .header("Authorization", "Bearer " + tokenOperador))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("evidence_not_found"));
     }
 
     @Test
