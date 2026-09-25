@@ -26,10 +26,10 @@ import ar.com.planillero.AbstractIntegrationTest;
  *
  * <p><b>Seguridad contra Spoofing (Criterio 3):</b>
  * Tomcat recorre {@code X-Forwarded-For} de derecha a izquierda y descarta las IPs que coinciden
- * con {@code internalProxies} (todas las privadas RFC 1918). Por ello, la seguridad contra
- * falsificación de IP depende estrictamente de que el proxy de borde (NGINX en
- * {@code backoffice/docker/nginx.conf}) pise el header con {@code $remote_addr} en lugar de
- * anexarlo con {@code $proxy_add_x_forwarded_for}.
+ * con {@code internalProxies} (todas las privadas RFC 1918). Por ello, si un proxy anexara el header
+ * en lugar de pisarlo, Tomcat tomaría el valor provisto por el cliente. La seguridad depende
+ * estrictamente de que el proxy de borde (NGINX en {@code backoffice/docker/nginx.conf}) pise el header
+ * con {@code proxy_set_header X-Forwarded-For $remote_addr;}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AuditRemoteIpIntegrationTest extends AbstractIntegrationTest {
@@ -109,19 +109,21 @@ class AuditRemoteIpIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Criterio 3: Cuando un cliente intenta falsificar su IP enviando cabeceras falsas, NGINX
-     * (como proxy de borde en backoffice/docker/nginx.conf) sobreescribe {@code X-Forwarded-For}
-     * con la IP real de conexión {@code $remote_addr} (ej. 198.51.100.24), descartando el valor
-     * malicioso. El backend recibe y audita únicamente la IP real.
+     * Criterio 3: Demuestra el comportamiento del backend si un cliente enviara un header falsificado
+     * y el proxy intermedio lo anexara (ej. "6.6.6.6, 172.18.0.1") en vez de pisarlo.
+     * Tomcat saltea la IP privada 172.18.0.1 (por pertenecer al default de {@code internalProxies}) y
+     * termina confiando en 6.6.6.6.
+     *
+     * <p>Este test deja asentado que el backend por sí solo confía en la cadena que llega de un proxy
+     * interno, justificando por qué la defensa real contra spoofing DEBE realizarse en NGINX
+     * ({@code backoffice/docker/nginx.conf}) configurando {@code proxy_set_header X-Forwarded-For $remote_addr;}.
      */
     @Test
-    void forgedHeaderOverwrittenByBorderProxyRecordsRealClientIp() throws Exception {
+    void appendedForgedHeaderIsTrustedSoTheEdgeProxyMustOverwriteIt() throws Exception {
         UUID visit = newVisit();
         String supervisorToken = login("supervisor.demo", "Supervisor123!");
-        String realClientIp = "198.51.100.24";
+        String forgedChain = "6.6.6.6, 172.18.0.1";
 
-        // Simula la petición que llega al backend luego de que NGINX pisó cualquier
-        // X-Forwarded-For previo con la IP de conexión real ($remote_addr)
         String assignBody = """
                 {
                     "operatorId": "%s",
@@ -134,8 +136,8 @@ class AuditRemoteIpIntegrationTest extends AbstractIntegrationTest {
                 .uri(URI.create("http://127.0.0.1:" + port + "/api/v1/visits/assign"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + supervisorToken)
-                .header("X-Forwarded-For", realClientIp)
-                .header("X-Real-IP", realClientIp)
+                .header("X-Forwarded-For", forgedChain)
+                .header("X-Real-IP", "172.18.0.1")
                 .POST(HttpRequest.BodyPublishers.ofString(assignBody))
                 .build();
 
@@ -146,7 +148,8 @@ class AuditRemoteIpIntegrationTest extends AbstractIntegrationTest {
                 "select ip from audit.audit_logs where entity_id = ? and event_type = 'VISIT_ASSIGNED'",
                 String.class, visit.toString());
 
-        assertThat(recordedIp).isEqualTo(realClientIp);
+        // Tomcat saltea la IP privada 172.18.0.1 y toma 6.6.6.6
+        assertThat(recordedIp).isEqualTo("6.6.6.6");
     }
 
     private UUID newVisit() {
