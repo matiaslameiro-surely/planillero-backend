@@ -213,7 +213,9 @@ class VisitStartIntegrationTest extends AbstractIntegrationTest {
                         .contentType(APPLICATION_JSON)
                         .content(startBody("10", "20", "99", "2026-10-20T10:00:00Z")))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("visit_not_startable"));
+                .andExpect(jsonPath("$.error").value("visit_not_startable"))
+                .andExpect(jsonPath("$.message")
+                        .value("La visita " + codeOf(visit) + " no se puede iniciar (estado en curso)."));
 
         assertThat(jdbc.queryForObject(
                 "select start_latitude from visits.visits where id = ?", java.math.BigDecimal.class, visit))
@@ -240,7 +242,9 @@ class VisitStartIntegrationTest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + supervisorToken())
                         .contentType(APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("visit_not_assignable"));
+                .andExpect(jsonPath("$.error").value("visit_not_assignable"))
+                .andExpect(jsonPath("$.message")
+                        .value("La visita " + codeOf(visit) + " no se puede asignar (estado en curso)."));
 
         assertThat(jdbc.queryForObject(
                 "select status from visits.visits where id = ?", String.class, visit))

@@ -134,7 +134,7 @@ public class PlanningService {
                     || visit.getStatus() == VisitStatus.CANCELLED) {
                 throw ApiException.badRequest("visit_not_assignable",
                         "La visita " + visit.getCode() + " no se puede asignar (estado "
-                                + visit.getStatus().name().toLowerCase() + ").");
+                                + visit.getStatus().label() + ").");
             }
             // El estado ASSIGNED refleja que la visita tiene al menos una hoja de ruta. Queda
             // persistido para que el filtro por estado del contrato sea consistente con la grilla.
