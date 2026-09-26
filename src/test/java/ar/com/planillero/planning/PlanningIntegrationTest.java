@@ -209,7 +209,8 @@ class PlanningIntegrationTest extends AbstractIntegrationTest {
                         .contentType(APPLICATION_JSON)
                         .content(pedidoAsignacion(OPERADOR_DEMO, DIA_ORDEN, VISITA_NORTE_COMPLETADA)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("visit_not_assignable"));
+                .andExpect(jsonPath("$.error").value("visit_not_assignable"))
+                .andExpect(jsonPath("$.message").value("La visita V-1006 no se puede asignar (estado completada)."));
     }
 
     @Test

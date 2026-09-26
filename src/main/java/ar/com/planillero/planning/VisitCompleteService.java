@@ -50,7 +50,7 @@ public class VisitCompleteService {
         if (visit.getStatus() != VisitStatus.IN_PROGRESS) {
             throw ApiException.conflict("visit_not_in_progress",
                     "Sólo se puede completar una visita en curso (estado "
-                            + visit.getStatus().name().toLowerCase() + ").");
+                            + visit.getStatus().label() + ").");
         }
 
         visit.complete();

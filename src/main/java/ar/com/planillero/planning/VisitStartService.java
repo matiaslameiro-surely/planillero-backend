@@ -63,7 +63,7 @@ public class VisitStartService {
         if (visit.getStatus() != VisitStatus.ASSIGNED) {
             throw ApiException.conflict("visit_not_startable",
                     "La visita " + visit.getCode() + " no se puede iniciar (estado "
-                            + visit.getStatus().name().toLowerCase() + ").");
+                            + visit.getStatus().label() + ").");
         }
 
         Instant serverTime = clock.instant();

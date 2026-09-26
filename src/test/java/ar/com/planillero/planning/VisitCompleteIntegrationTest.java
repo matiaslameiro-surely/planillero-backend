@@ -108,7 +108,8 @@ class VisitCompleteIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/v1/visits/{id}/complete", visit)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("visit_not_in_progress"));
+                .andExpect(jsonPath("$.error").value("visit_not_in_progress"))
+                .andExpect(jsonPath("$.message").value("Sólo se puede completar una visita en curso (estado asignada)."));
     }
 
     @Test
