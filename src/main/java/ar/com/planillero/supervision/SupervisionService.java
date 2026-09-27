@@ -27,7 +27,6 @@ import ar.com.planillero.user.User;
 import ar.com.planillero.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.util.HtmlUtils;
 
 /**
  * Lógica de negocio analítica del Tablero Central de Supervisión.
@@ -219,11 +218,6 @@ public class SupervisionService {
                 }
             }
 
-            // Sanitización estricta contra XSS al renderizar texto de observaciones
-            String sanitizedObservations = shift.getObservations() != null
-                    ? HtmlUtils.htmlEscape(shift.getObservations())
-                    : null;
-
             result.add(new OperatorStatusDto(
                     shift.getOperator().getId(),
                     shift.getOperator().getUsername(),
@@ -240,7 +234,7 @@ public class SupervisionService {
                     activeVisitAddress,
                     activeElapsedMinutes,
                     slaStatus,
-                    sanitizedObservations
+                    shift.getObservations()
             ));
         }
 
@@ -275,7 +269,7 @@ public class SupervisionService {
             shift.setLastLongitude(request.longitude());
         }
         if (request.observations() != null && !request.observations().isBlank()) {
-            shift.setObservations(HtmlUtils.htmlEscape(request.observations().trim()));
+            shift.setObservations(request.observations().trim());
         }
 
         // Evaluar estado operativo
