@@ -37,8 +37,10 @@ build/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Claves y certificados (JWT RSA, HMAC, TLS): nunca se versionan.
 *.key
 *.pem
 *.p12
+keys/

@@ -1,0 +1,102 @@
+# Entorno de producción de Planillero para VPS con Traefik.
+#
+# Servicios:
+#   - postgres: PostgreSQL 16 sobre Alpine con volumen persistente.
+#   - backend: Spring Boot 4.1.1 (Java 21 Distroless/Alpine) con almacenamiento local pericial persistente.
+#   - backoffice: Angular 22 servido por NGINX (unprivileged) y enrutado mediante Traefik con TLS.
+#
+# Uso:
+#   1. Generar claves y secretos: ./scripts/generate-jwt-keys.sh
+#   2. Configurar variables: cp .env.production.example .env.production (y editar valores)
+#   3. Levantar: docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+name: planillero-prod
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?falta POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?falta POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
+    volumes:
+      - planillero-pgdata:/var/lib/postgresql/data
+    networks:
+      - planillero-prod-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    <<: *hardening
+    build:
+      context: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      HMAC_SECRET: ${HMAC_SECRET:?falta HMAC_SECRET (mínimo 32 caracteres)}
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_DIR: /app/storage
+      JWT_PRIVATE_KEY_RESOURCE: file:/app/keys/private.pem
+      JWT_PUBLIC_KEY_RESOURCE: file:/app/keys/public.pem
+    volumes:
+      - planillero-storage:/app/storage
+      - ./keys:/app/keys:ro
+    networks:
+      - planillero-prod-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  backoffice:
+    <<: *hardening
+    build:
+      context: ../backoffice
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - planillero-prod-net
+      - pigar-staging_edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=pigar-staging_edge"
+      - "traefik.http.routers.planillero-secure.rule=Host(`${APP_DOMAIN:-planillero.ferchamorro.cloud}`)"
+      - "traefik.http.routers.planillero-secure.entrypoints=websecure"
+      - "traefik.http.routers.planillero-secure.tls=true"
+      - "traefik.http.routers.planillero-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.planillero.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  planillero-prod-net:
+    driver: bridge
+  pigar-staging_edge:
+    external: true
+
+volumes:
+  planillero-pgdata:
+  planillero-storage:
