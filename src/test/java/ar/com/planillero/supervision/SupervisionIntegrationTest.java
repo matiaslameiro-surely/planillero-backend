@@ -1,6 +1,7 @@
 package ar.com.planillero.supervision;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -158,6 +159,35 @@ class SupervisionIntegrationTest extends AbstractIntegrationTest {
         assertEquals("OFFLINE", todayShift().getNetworkStatus());
         sendHeartbeat(token, "{\"networkStatus\":null}").andExpect(status().isOk());
         assertEquals("OFFLINE", todayShift().getNetworkStatus());
+    }
+
+    @Test
+    @DisplayName("POST /heartbeat guarda y GET /operadores/estado devuelve observaciones tal cual con acentos, comillas y etiquetas HTML")
+    void latidoGuardaYDevuelveObservacionesSinEscapeHtml() throws Exception {
+        String opToken = operatorToken();
+        String supToken = supervisorToken();
+        String rawObservation = "Demora por tránsito en Ñuñoa, \"calle cortada\" <script>alert(1)</script>";
+
+        String payload = """
+                {
+                    "batteryLevel": 0.90,
+                    "networkStatus": "ONLINE",
+                    "observations": "%s"
+                }
+                """.formatted(rawObservation.replace("\"", "\\\""));
+
+        sendHeartbeat(opToken, payload).andExpect(status().isOk());
+
+        // Verificar que en base de datos quedó en texto plano
+        assertEquals(rawObservation, todayShift().getObservations());
+
+        // Verificar que GET /operadores/estado lo devuelve idéntico sin entidades HTML
+        mockMvc.perform(get("/api/v1/supervision/operadores/estado")
+                        .header("Authorization", "Bearer " + supToken)
+                        .param("date", LocalDate.now().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.username == 'operador.demo')].observations")
+                        .value(hasItem(rawObservation)));
     }
 
     @Test
